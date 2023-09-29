@@ -11,6 +11,11 @@ pub const VALIDATION_LAYERS: &[*const c_char] = unsafe {&[
     CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0").as_ptr(),
 ]};
 
+pub struct Validator {
+    debug_utils_loader: ash::extensions::ext::DebugUtils,
+    debug_messenger: vk::DebugUtilsMessengerEXT,
+}
+
 #[derive(Error, Debug)] pub enum CheckValidationLayerError {
     #[error("Failed to enumerate instance layer properties")]
     CouldNotEnumerate(#[from] ash::vk::Result),
@@ -20,6 +25,40 @@ pub const VALIDATION_LAYERS: &[*const c_char] = unsafe {&[
     NoLayersFound,
     #[error("Layer {0} not found")]
     LayerNotFound(String),
+}
+
+impl Validator {
+    pub fn setup(
+        entry: &ash::Entry,
+        instance: &ash::Instance,
+    ) -> Self {
+        let debug_utils_loader = ash::extensions::ext::DebugUtils::new(entry, instance);
+
+        let debug_messenger = if !VALIDATE_LAYERS {
+            vk::DebugUtilsMessengerEXT::null()
+        } else {
+            let create_info = debug_messenger_create_info();
+            unsafe {
+                debug_utils_loader.create_debug_utils_messenger(&create_info, None)
+                    .expect("Failed to create debug utils messenger")
+            }
+        };
+        
+        Self {
+            debug_utils_loader,
+            debug_messenger,
+        }
+    }
+}
+
+impl Drop for Validator {
+    fn drop(&mut self) {
+        if VALIDATE_LAYERS {
+            unsafe {
+                self.debug_utils_loader.destroy_debug_utils_messenger(self.debug_messenger, None);
+            }
+        }
+    }
 }
 
 pub fn check_validation_layer_support(entry: &ash::Entry) -> Result<(), CheckValidationLayerError> {
@@ -50,21 +89,10 @@ unsafe extern "system" fn debug_callback(
     p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _p_user_data: *mut c_void,
 ) -> vk::Bool32 {
-    let severity = match message_severity {
-        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => "[Verbose]",
-        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => "[Warning]",
-        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => "[Error]",
-        vk::DebugUtilsMessageSeverityFlagsEXT::INFO => "[Info]",
-        _ => "[Unknown]",
-    };
-    let types = match message_type {
-        vk::DebugUtilsMessageTypeFlagsEXT::GENERAL => "[General]",
-        vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE => "[Performance]",
-        vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION => "[Validation]",
-        _ => "[Unknown]",
-    };
+    let severity = format!("{:?}", message_severity);
+    let types = format!("{:?}", message_type);
     let message = CStr::from_ptr((*p_callback_data).p_message);
-    println!("[Debug]{}{}{:?}", severity, types, message);
+    println!("[Debug][{}][{}] {:?}", severity, types, message);
     vk::FALSE
 }
 
@@ -78,23 +106,4 @@ pub fn debug_messenger_create_info<'a>() -> vk::DebugUtilsMessengerCreateInfoEXT
                       | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
                       | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION)
         .pfn_user_callback(Some(debug_callback))
-}
-
-pub fn setup_debug_utils(
-    entry: &ash::Entry,
-    instance: &ash::Instance,
-) -> (ash::extensions::ext::DebugUtils, vk::DebugUtilsMessengerEXT) {
-    let loader = ash::extensions::ext::DebugUtils::new(entry, instance);
-
-    let messenger = if !VALIDATE_LAYERS {
-        vk::DebugUtilsMessengerEXT::null()
-    } else {
-        let create_info = debug_messenger_create_info();
-        unsafe {
-            loader.create_debug_utils_messenger(&create_info, None)
-                .expect("Failed to create debug utils messenger")
-        }
-    };
-    
-    (loader, messenger)
 }

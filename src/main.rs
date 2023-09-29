@@ -1,5 +1,9 @@
 mod app;
+mod device;
+mod instance;
+mod physical_device;
 mod util;
+mod validator;
 
 use winit::event_loop::EventLoop;
 
