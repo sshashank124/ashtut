@@ -5,8 +5,16 @@ edition = "2021"
 
 [dependencies]
 ash = { version = "0.37", features = ["linked"] }
-thiserror = "1.0"
 winit = "0.28"
 
 [profile.dev]
+opt-level = 3
+
+[build-dependencies]
+spirv-builder = "0.9"
+
+[profile.release.build-override]
+opt-level = 3
+codegen-units = 16
+[profile.dev.build-override]
 opt-level = 3

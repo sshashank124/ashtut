@@ -1,96 +1,193 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    collections::HashSet,
+    ops::{Deref, DerefMut},
+};
 
 use ash::vk;
 
-use crate::instance::Instance;
+use crate::{
+    features::Features,
+    instance::Instance,
+    surface::{Surface, SurfaceDetails},
+    util::{self, info},
+};
 
 pub struct PhysicalDevice {
-    pub inner: vk::PhysicalDevice,
+    inner: vk::PhysicalDevice,
     pub indices: QueueFamilyIndices,
 }
 
 pub struct QueueFamilyIndices {
-    pub graphics: u32,
+    families: [u32; 2],
 }
 
 #[derive(Default)]
-struct QueueFamilyIndicesBuilder {
+struct QueueFamilyIndicesInfo {
     graphics: Option<u32>,
+    present: Option<u32>,
 }
 
 impl PhysicalDevice {
-    pub fn pick(instance: &Instance) -> Self {
+    pub fn pick(instance: &Instance, surface: &Surface) -> (Self, SurfaceDetails) {
         let all_devices = unsafe {
-            instance.enumerate_physical_devices()
+            instance
+                .enumerate_physical_devices()
                 .expect("Failed to enumerate physical devices")
         };
-        
+
         if all_devices.is_empty() {
             panic!("Failed to find a physical device with Vulkan support");
         }
-        
-        let (inner, indices) = all_devices.into_iter()
-            .map(|physical_device| (physical_device, Self::find_queue_families(instance, physical_device)))
-            .find(|(physical_device, indices)| Self::is_suitable(instance, *physical_device, indices))
+
+        let (inner, indices, surface_details) = all_devices
+            .into_iter()
+            .filter(|&physical_device| {
+                Self::has_required_device_extensions(instance, physical_device)
+                    && Self::supports_required_features(instance, physical_device)
+            })
+            .map(|physical_device| {
+                (
+                    physical_device,
+                    Self::find_queue_families(instance, physical_device, surface),
+                    surface.get_details(physical_device),
+                )
+            })
+            .find(|(physical_device, indices, surface_details)| {
+                Self::is_suitable(instance, *physical_device, indices, surface_details)
+            })
             .expect("Failed to find a suitable physical device");
 
-        Self {
-            inner,
-            indices: indices.into(),
-        }
+        (
+            Self {
+                inner,
+                indices: indices.into(),
+            },
+            surface_details,
+        )
     }
-    
+
     fn is_suitable(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,
-        indices: &QueueFamilyIndicesBuilder,
+        indices: &QueueFamilyIndicesInfo,
+        surface_details: &SurfaceDetails,
     ) -> bool {
         let properties = unsafe { instance.get_physical_device_properties(physical_device) };
-        properties.device_type == vk::PhysicalDeviceType::DISCRETE_GPU && indices.complete()
+
+        let is_discrete_gpu = properties.device_type == vk::PhysicalDeviceType::DISCRETE_GPU;
+        let has_queue_family_support = indices.is_complete();
+        let has_swapchain_support = surface_details.is_populated();
+
+        is_discrete_gpu && has_queue_family_support && has_swapchain_support
     }
-    
+
+    fn has_required_device_extensions(
+        instance: &Instance,
+        physical_device: vk::PhysicalDevice,
+    ) -> bool {
+        let available_extensions: HashSet<_> = unsafe {
+            instance
+                .enumerate_device_extension_properties(physical_device)
+                .expect("Failed to get device extension properties")
+                .into_iter()
+                .map(|e| util::bytes_to_string(e.extension_name.as_ptr()))
+                .collect()
+        };
+
+        info::REQUIRED_DEVICE_EXTENSIONS
+            .iter()
+            .copied()
+            .map(util::bytes_to_string)
+            .all(|ref required_extension| available_extensions.contains(required_extension))
+    }
+
+    fn supports_required_features(
+        instance: &Instance,
+        physical_device: vk::PhysicalDevice,
+    ) -> bool {
+        let features = Features::get_supported(instance, physical_device);
+        features.v_1_2.vulkan_memory_model > 0
+    }
+
     fn find_queue_families(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,
-    ) -> QueueFamilyIndicesBuilder {
-        let queue_families = unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
-        
-        let valid_queue_families = queue_families.into_iter()
+        surface: &Surface,
+    ) -> QueueFamilyIndicesInfo {
+        let queue_families =
+            unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
+
+        let valid_queue_families = queue_families
+            .into_iter()
             .enumerate()
             .filter(|(_, queue_family)| queue_family.queue_count > 0);
-        
-        let mut indices = QueueFamilyIndicesBuilder::default();
+
+        let mut indices = QueueFamilyIndicesInfo::default();
         for (index, queue_family) in valid_queue_families {
             if queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
                 indices.graphics = Some(index as u32);
             }
-            
-            if indices.complete() { break; }
+            let has_surface_support = unsafe {
+                surface
+                    .loader
+                    .get_physical_device_surface_support(physical_device, index as u32, **surface)
+                    .expect("Failed to get physical device surface support info")
+            };
+            if has_surface_support {
+                indices.present = Some(index as u32);
+            }
+
+            if indices.is_complete() {
+                break;
+            }
         }
-        
+
         indices
     }
 }
 
-impl QueueFamilyIndicesBuilder {
-    fn complete(&self) -> bool {
-        self.graphics.is_some()
+impl QueueFamilyIndices {
+    pub fn graphics(&self) -> u32 {
+        self.families[0]
+    }
+    pub fn present(&self) -> u32 {
+        self.families[1]
+    }
+    pub fn separate_graphics_and_presentation_indices(&self) -> Option<&[u32]> {
+        if self.graphics() == self.present() {
+            None
+        } else {
+            Some(&self.families[..2])
+        }
+    }
+    pub fn unique_queue_family_indices(&self) -> HashSet<u32> {
+        HashSet::from_iter(self.families)
     }
 }
 
-impl From<QueueFamilyIndicesBuilder> for QueueFamilyIndices {
-    fn from(value: QueueFamilyIndicesBuilder) -> Self {
+impl From<QueueFamilyIndicesInfo> for QueueFamilyIndices {
+    fn from(value: QueueFamilyIndicesInfo) -> Self {
         Self {
-            graphics: value.graphics.unwrap()
+            families: [value.graphics.unwrap(), value.present.unwrap()],
         }
+    }
+}
+
+impl QueueFamilyIndicesInfo {
+    fn is_complete(&self) -> bool {
+        self.graphics.is_some() && self.present.is_some()
     }
 }
 
 impl Deref for PhysicalDevice {
     type Target = vk::PhysicalDevice;
-    fn deref(&self) -> &Self::Target { &self.inner }
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
 }
 
 impl DerefMut for PhysicalDevice {
-    fn deref_mut(&mut self) -> &mut Self::Target { &mut self.inner }
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
 }
