@@ -4,33 +4,30 @@ use crate::{
     device::Device,
     instance::Instance,
     physical_device::PhysicalDevice,
-    surface::{Surface, SurfaceDetails},
     util::{info, Destroy},
 };
 
 pub struct Swapchain {
-    inner: vk::SwapchainKHR,
-    loader: khr::Swapchain,
+    pub swapchain: vk::SwapchainKHR,
+    pub loader: khr::Swapchain,
     pub format: vk::Format,
     pub extent: vk::Extent2D,
-    images: Vec<vk::Image>,
     pub image_views: Vec<vk::ImageView>,
 }
 
 impl Swapchain {
     pub fn create(
         instance: &Instance,
-        surface: &Surface,
-        surface_details: SurfaceDetails,
         physical_device: &PhysicalDevice,
         device: &Device,
     ) -> Self {
+        let surface_details = &physical_device.surface_details;
         let surface_format = Self::choose_best_surface_format(&surface_details.formats);
         let format = surface_format.format;
         let extent = Self::choose_extent(&surface_details.capabilities);
 
         let create_info = vk::SwapchainCreateInfoKHR::builder()
-            .surface(**surface)
+            .surface(*physical_device.surface)
             .min_image_count(Self::choose_image_count(&surface_details.capabilities))
             .image_format(format)
             .image_color_space(surface_format.color_space)
@@ -57,7 +54,7 @@ impl Swapchain {
 
         let loader = khr::Swapchain::new(instance, device);
 
-        let inner = unsafe {
+        let swapchain = unsafe {
             loader
                 .create_swapchain(&create_info, None)
                 .expect("Failed to create swapchain")
@@ -65,18 +62,17 @@ impl Swapchain {
 
         let images = unsafe {
             loader
-                .get_swapchain_images(inner)
+                .get_swapchain_images(swapchain)
                 .expect("Failed to get swapchain images")
         };
 
         let image_views = Self::create_image_views(device, &images, format);
 
         Self {
-            inner,
+            swapchain,
             loader,
             format,
             extent,
-            images,
             image_views,
         }
     }
@@ -160,7 +156,7 @@ impl<'a> Destroy<&'a Device> for Swapchain {
             for &image_view in &self.image_views {
                 device.destroy_image_view(image_view, None);
             }
-            self.loader.destroy_swapchain(self.inner, None);
+            self.loader.destroy_swapchain(self.swapchain, None);
         }
     }
 }

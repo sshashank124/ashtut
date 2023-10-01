@@ -10,9 +10,9 @@ use crate::{
 };
 
 pub struct Device {
-    inner: ash::Device,
-    graphics_queue: vk::Queue,
-    present_queue: vk::Queue,
+    device: ash::Device,
+    pub graphics_queue: vk::Queue,
+    pub present_queue: vk::Queue,
 }
 
 impl Device {
@@ -28,7 +28,7 @@ impl Device {
                     .build()
             })
             .collect::<Vec<_>>();
-        
+
         let mut required_features = Features::required();
 
         let create_info = vk::DeviceCreateInfo::builder()
@@ -36,18 +36,19 @@ impl Device {
             .enabled_extension_names(info::REQUIRED_DEVICE_EXTENSIONS)
             .push_next(required_features.v_1_0.as_mut());
 
-        let inner = unsafe {
+        let device = unsafe {
             instance
                 .create_device(**physical_device, &create_info, None)
                 .expect("Failed to create logical device")
         };
 
         let graphics_queue =
-            unsafe { inner.get_device_queue(physical_device.indices.graphics(), 0) };
-        let present_queue = unsafe { inner.get_device_queue(physical_device.indices.present(), 0) };
+            unsafe { device.get_device_queue(physical_device.indices.graphics(), 0) };
+        let present_queue =
+            unsafe { device.get_device_queue(physical_device.indices.present(), 0) };
 
         Self {
-            inner,
+            device,
             graphics_queue,
             present_queue,
         }
@@ -57,7 +58,7 @@ impl Device {
 impl Destroy<()> for Device {
     fn destroy_with(&self, _: ()) {
         unsafe {
-            self.inner.destroy_device(None);
+            self.device.destroy_device(None);
         }
     }
 }
@@ -65,12 +66,12 @@ impl Destroy<()> for Device {
 impl Deref for Device {
     type Target = ash::Device;
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.device
     }
 }
 
 impl DerefMut for Device {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+        &mut self.device
     }
 }

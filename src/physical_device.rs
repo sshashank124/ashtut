@@ -4,16 +4,19 @@ use std::{
 };
 
 use ash::vk;
+use winit::window::Window;
 
 use crate::{
     features::Features,
     instance::Instance,
     surface::{Surface, SurfaceDetails},
-    util::{self, info},
+    util::{self, info, Destroy},
 };
 
 pub struct PhysicalDevice {
-    inner: vk::PhysicalDevice,
+    pub surface: Surface,
+    physical_device: vk::PhysicalDevice,
+    pub surface_details: SurfaceDetails,
     pub indices: QueueFamilyIndices,
 }
 
@@ -28,7 +31,9 @@ struct QueueFamilyIndicesInfo {
 }
 
 impl PhysicalDevice {
-    pub fn pick(instance: &Instance, surface: &Surface) -> (Self, SurfaceDetails) {
+    pub fn pick(instance: &Instance, window: &Window) -> Self {
+        let surface = Surface::create(instance, window);
+
         let all_devices = unsafe {
             instance
                 .enumerate_physical_devices()
@@ -39,7 +44,7 @@ impl PhysicalDevice {
             panic!("Failed to find a physical device with Vulkan support");
         }
 
-        let (inner, indices, surface_details) = all_devices
+        let (physical_device, indices, surface_details) = all_devices
             .into_iter()
             .filter(|&physical_device| {
                 Self::has_required_device_extensions(instance, physical_device)
@@ -48,7 +53,7 @@ impl PhysicalDevice {
             .map(|physical_device| {
                 (
                     physical_device,
-                    Self::find_queue_families(instance, physical_device, surface),
+                    Self::find_queue_families(instance, physical_device, &surface),
                     surface.get_details(physical_device),
                 )
             })
@@ -57,13 +62,12 @@ impl PhysicalDevice {
             })
             .expect("Failed to find a suitable physical device");
 
-        (
-            Self {
-                inner,
-                indices: indices.into(),
-            },
+        Self {
+            surface,
+            physical_device,
             surface_details,
-        )
+            indices: indices.into(),
+        }
     }
 
     fn is_suitable(
@@ -146,6 +150,12 @@ impl PhysicalDevice {
     }
 }
 
+impl Destroy<()> for PhysicalDevice {
+    fn destroy_with(&self, _: ()) {
+        self.surface.destroy_with(());
+    }
+}
+
 impl QueueFamilyIndices {
     pub fn graphics(&self) -> u32 {
         self.families[0]
@@ -182,12 +192,12 @@ impl QueueFamilyIndicesInfo {
 impl Deref for PhysicalDevice {
     type Target = vk::PhysicalDevice;
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.physical_device
     }
 }
 
 impl DerefMut for PhysicalDevice {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+        &mut self.physical_device
     }
 }

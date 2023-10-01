@@ -2,6 +2,8 @@ use ash::vk;
 
 use crate::{
     device::Device,
+    instance::Instance,
+    physical_device::PhysicalDevice,
     render_pass::RenderPass,
     shader_module::ShaderModule,
     swapchain::Swapchain,
@@ -9,13 +11,34 @@ use crate::{
 };
 
 pub struct GraphicsPipeline {
+    pub swapchain: Swapchain,
+    pub render_pass: RenderPass,
     layout: vk::PipelineLayout,
-    inner: vk::Pipeline,
-    framebuffers: Vec<vk::Framebuffer>,
+    pub pipeline: vk::Pipeline,
+    pub framebuffers: Vec<vk::Framebuffer>,
 }
 
 impl GraphicsPipeline {
-    pub fn create(device: &Device, render_pass: &RenderPass, swapchain: &Swapchain) -> Self {
+    pub fn create(instance: &Instance, physical_device: &PhysicalDevice, device: &Device) -> Self {
+        let swapchain = Swapchain::create(instance, physical_device, device);
+        let render_pass = RenderPass::create(device, swapchain.format);
+        let (layout, pipeline) = Self::create_pipeline(device, &swapchain, &render_pass);
+        let framebuffers = Self::create_framebuffers(device, &swapchain, &render_pass);
+
+        Self {
+            swapchain,
+            render_pass,
+            layout,
+            pipeline,
+            framebuffers,
+        }
+    }
+
+    fn create_pipeline(
+        device: &Device,
+        swapchain: &Swapchain,
+        render_pass: &RenderPass,
+    ) -> (vk::PipelineLayout, vk::Pipeline) {
         let shader_module = ShaderModule::create_from_file(device, info::SHADER_FILE);
 
         let shader_stages = [
@@ -89,27 +112,21 @@ impl GraphicsPipeline {
             .render_pass(**render_pass)
             .build()];
 
-        let inner = unsafe {
+        let pipeline = unsafe {
             device
                 .create_graphics_pipelines(vk::PipelineCache::null(), &create_infos, None)
                 .expect("Failed to create graphics pipeline")
         }[0];
-
+        
         shader_module.destroy_with(device);
-
-        let framebuffers = Self::create_framebuffers(device, render_pass, swapchain);
-
-        Self {
-            layout,
-            inner,
-            framebuffers,
-        }
+        
+        (layout, pipeline)
     }
 
     fn create_framebuffers(
         device: &Device,
-        render_pass: &RenderPass,
         swapchain: &Swapchain,
+        render_pass: &RenderPass,
     ) -> Vec<vk::Framebuffer> {
         swapchain
             .image_views
@@ -138,8 +155,10 @@ impl<'a> Destroy<&'a Device> for GraphicsPipeline {
             for &framebuffer in &self.framebuffers {
                 device.destroy_framebuffer(framebuffer, None);
             }
-            device.destroy_pipeline(self.inner, None);
+            device.destroy_pipeline(self.pipeline, None);
             device.destroy_pipeline_layout(self.layout, None);
+            self.render_pass.destroy_with(device);
+            self.swapchain.destroy_with(device);
         }
     }
 }

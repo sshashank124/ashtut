@@ -11,13 +11,16 @@ use crate::{
 };
 
 pub struct Instance {
-    inner: ash::Instance,
+    pub entry: ash::Entry,
+    instance: ash::Instance,
     validator: Validator,
 }
 
 impl Instance {
-    pub fn create(entry: &ash::Entry) -> Self {
-        validator::check_validation_layer_support(entry);
+    pub fn create() -> Self {
+        let entry = ash::Entry::linked();
+
+        validator::check_validation_layer_support(&entry);
 
         let app_name = CString::new(info::WINDOW_TITLE).unwrap();
         let app_info = vk::ApplicationInfo::builder()
@@ -37,15 +40,15 @@ impl Instance {
             instance_create_info
         };
 
-        let inner = unsafe {
+        let instance = unsafe {
             entry
                 .create_instance(&instance_create_info, None)
                 .expect("Failed to create Vulkan instance")
         };
 
-        let validator = Validator::setup(entry, &inner);
+        let validator = Validator::setup(&entry, &instance);
 
-        Self { inner, validator }
+        Self { entry, instance, validator }
     }
 }
 
@@ -53,7 +56,7 @@ impl Destroy<()> for Instance {
     fn destroy_with(&self, _: ()) {
         unsafe {
             self.validator.destroy_with(());
-            self.inner.destroy_instance(None);
+            self.instance.destroy_instance(None);
         }
     }
 }
@@ -61,12 +64,12 @@ impl Destroy<()> for Instance {
 impl Deref for Instance {
     type Target = ash::Instance;
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.instance
     }
 }
 
 impl DerefMut for Instance {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+        &mut self.instance
     }
 }

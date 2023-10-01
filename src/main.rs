@@ -1,4 +1,5 @@
 mod app;
+mod command_pool;
 mod device;
 mod instance;
 mod features;

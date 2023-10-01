@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub struct Surface {
-    inner: vk::SurfaceKHR,
+    surface: vk::SurfaceKHR,
     pub loader: ash::extensions::khr::Surface,
 }
 
@@ -20,27 +20,27 @@ pub struct SurfaceDetails {
 }
 
 impl Surface {
-    pub fn create(entry: &ash::Entry, instance: &Instance, window: &Window) -> Self {
-        let inner = util::platform::create_surface(entry, instance, window);
-        let loader = ash::extensions::khr::Surface::new(entry, instance);
+    pub fn create(instance: &Instance, window: &Window) -> Self {
+        let surface = util::platform::create_surface(instance, window);
+        let loader = ash::extensions::khr::Surface::new(&instance.entry, instance);
 
-        Self { inner, loader }
+        Self { surface, loader }
     }
 
     pub fn get_details(&self, physical_device: vk::PhysicalDevice) -> SurfaceDetails {
         let capabilities = unsafe {
             self.loader
-                .get_physical_device_surface_capabilities(physical_device, self.inner)
+                .get_physical_device_surface_capabilities(physical_device, self.surface)
                 .expect("Failed to get surface capabilities")
         };
         let formats = unsafe {
             self.loader
-                .get_physical_device_surface_formats(physical_device, self.inner)
+                .get_physical_device_surface_formats(physical_device, self.surface)
                 .expect("Failed to get surface formats")
         };
         let present_modes = unsafe {
             self.loader
-                .get_physical_device_surface_present_modes(physical_device, self.inner)
+                .get_physical_device_surface_present_modes(physical_device, self.surface)
                 .expect("Failed to get surface present modes")
         };
 
@@ -54,20 +54,20 @@ impl Surface {
 
 impl Destroy<()> for Surface {
     fn destroy_with(&self, _: ()) {
-        unsafe { self.loader.destroy_surface(self.inner, None) }
+        unsafe { self.loader.destroy_surface(self.surface, None) }
     }
 }
 
 impl Deref for Surface {
     type Target = vk::SurfaceKHR;
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.surface
     }
 }
 
 impl DerefMut for Surface {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+        &mut self.surface
     }
 }
 
