@@ -1,18 +1,16 @@
 use ash::{extensions::khr, vk};
 
 use crate::{
-    device::Device,
-    instance::Instance,
-    physical_device::PhysicalDevice,
-    util::{info, Destroy},
+    device::Device, instance::Instance, physical_device::PhysicalDevice, render_pass::RenderPass,
+    surface::SurfaceConfiguration, util::Destroy,
 };
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
     pub loader: khr::Swapchain,
-    pub format: vk::Format,
-    pub extent: vk::Extent2D,
+    pub config: SurfaceConfiguration,
     pub image_views: Vec<vk::ImageView>,
+    pub framebuffers: Vec<vk::Framebuffer>,
 }
 
 impl Swapchain {
@@ -20,25 +18,20 @@ impl Swapchain {
         instance: &Instance,
         physical_device: &PhysicalDevice,
         device: &Device,
+        render_pass: &RenderPass,
+        mut config: SurfaceConfiguration,
     ) -> Self {
-        let surface_details = &physical_device.surface_details;
-        let surface_format = Self::choose_best_surface_format(&surface_details.formats);
-        let format = surface_format.format;
-        let extent = Self::choose_extent(&surface_details.capabilities);
-
         let create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(*physical_device.surface)
-            .min_image_count(Self::choose_image_count(&surface_details.capabilities))
-            .image_format(format)
-            .image_color_space(surface_format.color_space)
-            .image_extent(extent)
+            .min_image_count(config.image_count)
+            .image_format(config.surface_format.format)
+            .image_color_space(config.surface_format.color_space)
+            .image_extent(config.extent)
             .image_array_layers(1)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
-            .pre_transform(surface_details.capabilities.current_transform)
+            .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(Self::choose_best_present_mode(
-                &surface_details.present_modes,
-            ))
+            .present_mode(config.present_mode)
             .clipped(true);
 
         let create_info = if let Some(different_indices) = physical_device
@@ -66,67 +59,25 @@ impl Swapchain {
                 .expect("Failed to get swapchain images")
         };
 
-        let image_views = Self::create_image_views(device, &images, format);
+        config.image_count = images.len() as u32;
+
+        let image_views = Self::create_image_views(device, config.surface_format.format, &images);
+        let framebuffers =
+            Self::create_framebuffers(device, render_pass, config.extent, &image_views);
 
         Self {
             swapchain,
             loader,
-            format,
-            extent,
+            config,
             image_views,
-        }
-    }
-
-    fn choose_best_surface_format(
-        available_formats: &[vk::SurfaceFormatKHR],
-    ) -> vk::SurfaceFormatKHR {
-        available_formats
-            .iter()
-            .copied()
-            .find(|&format| format == info::PREFERRED_SURFACE_FORMAT)
-            .unwrap_or_else(|| available_formats[0])
-    }
-
-    fn choose_best_present_mode(
-        available_present_modes: &[vk::PresentModeKHR],
-    ) -> vk::PresentModeKHR {
-        available_present_modes
-            .iter()
-            .copied()
-            .find(|&format| format == info::PREFERRED_PRESENT_MODE)
-            .unwrap_or(info::FALLBACK_PRESENT_MODE)
-    }
-
-    fn choose_extent(capabilities: &vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
-        if capabilities.current_extent.width != u32::MAX {
-            return capabilities.current_extent;
-        }
-
-        vk::Extent2D {
-            width: info::WINDOW_SIZE
-                .0
-                .max(capabilities.min_image_extent.width)
-                .min(capabilities.max_image_extent.width),
-            height: info::WINDOW_SIZE
-                .1
-                .max(capabilities.min_image_extent.height)
-                .min(capabilities.max_image_extent.height),
-        }
-    }
-
-    fn choose_image_count(capabilities: &vk::SurfaceCapabilitiesKHR) -> u32 {
-        let image_count = capabilities.min_image_count + 1;
-        if capabilities.max_image_count > 0 {
-            image_count.min(capabilities.max_image_count)
-        } else {
-            image_count
+            framebuffers,
         }
     }
 
     fn create_image_views(
         device: &Device,
-        images: &[vk::Image],
         format: vk::Format,
+        images: &[vk::Image],
     ) -> Vec<vk::ImageView> {
         images
             .iter()
@@ -148,11 +99,39 @@ impl Swapchain {
             })
             .collect()
     }
+
+    fn create_framebuffers(
+        device: &Device,
+        render_pass: &RenderPass,
+        extent: vk::Extent2D,
+        image_views: &[vk::ImageView],
+    ) -> Vec<vk::Framebuffer> {
+        image_views
+            .iter()
+            .map(|&image_view| {
+                let attachments = [image_view];
+                let create_info = vk::FramebufferCreateInfo::builder()
+                    .render_pass(**render_pass)
+                    .attachments(&attachments)
+                    .width(extent.width)
+                    .height(extent.height)
+                    .layers(1);
+                unsafe {
+                    device
+                        .create_framebuffer(&create_info, None)
+                        .expect("Failed to create framebuffer")
+                }
+            })
+            .collect()
+    }
 }
 
 impl<'a> Destroy<&'a Device> for Swapchain {
     fn destroy_with(&self, device: &'a Device) {
         unsafe {
+            for &framebuffer in &self.framebuffers {
+                device.destroy_framebuffer(framebuffer, None);
+            }
             for &image_view in &self.image_views {
                 device.destroy_image_view(image_view, None);
             }

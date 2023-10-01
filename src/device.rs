@@ -53,6 +53,13 @@ impl Device {
             present_queue,
         }
     }
+
+    pub fn wait_until_idle(&self) {
+        unsafe {
+            self.device_wait_idle()
+                .expect("Failed to wait for device to idle");
+        }
+    }
 }
 
 impl Destroy<()> for Device {

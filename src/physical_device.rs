@@ -9,14 +9,13 @@ use winit::window::Window;
 use crate::{
     features::Features,
     instance::Instance,
-    surface::{Surface, SurfaceDetails},
+    surface::{Surface, SurfaceConfigurationOptions},
     util::{self, info, Destroy},
 };
 
 pub struct PhysicalDevice {
     pub surface: Surface,
     physical_device: vk::PhysicalDevice,
-    pub surface_details: SurfaceDetails,
     pub indices: QueueFamilyIndices,
 }
 
@@ -44,7 +43,7 @@ impl PhysicalDevice {
             panic!("Failed to find a physical device with Vulkan support");
         }
 
-        let (physical_device, indices, surface_details) = all_devices
+        let (physical_device, indices) = all_devices
             .into_iter()
             .filter(|&physical_device| {
                 Self::has_required_device_extensions(instance, physical_device)
@@ -54,18 +53,21 @@ impl PhysicalDevice {
                 (
                     physical_device,
                     Self::find_queue_families(instance, physical_device, &surface),
-                    surface.get_details(physical_device),
                 )
             })
-            .find(|(physical_device, indices, surface_details)| {
-                Self::is_suitable(instance, *physical_device, indices, surface_details)
+            .find(|(physical_device, indices)| {
+                Self::is_suitable(
+                    instance,
+                    *physical_device,
+                    indices,
+                    surface.get_config_options(*physical_device),
+                )
             })
             .expect("Failed to find a suitable physical device");
 
         Self {
             surface,
             physical_device,
-            surface_details,
             indices: indices.into(),
         }
     }
@@ -74,7 +76,7 @@ impl PhysicalDevice {
         instance: &Instance,
         physical_device: vk::PhysicalDevice,
         indices: &QueueFamilyIndicesInfo,
-        surface_details: &SurfaceDetails,
+        surface_details: SurfaceConfigurationOptions,
     ) -> bool {
         let properties = unsafe { instance.get_physical_device_properties(physical_device) };
 
@@ -147,6 +149,10 @@ impl PhysicalDevice {
         }
 
         indices
+    }
+    
+    pub fn get_surface_config_options(&self) -> SurfaceConfigurationOptions {
+        self.surface.get_config_options(self.physical_device)
     }
 }
 

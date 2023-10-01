@@ -38,7 +38,7 @@ impl CommandPool {
     ) -> Vec<vk::CommandBuffer> {
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
             .command_pool(command_pool)
-            .command_buffer_count(graphics_pipeline.framebuffers.len() as u32);
+            .command_buffer_count(graphics_pipeline.swapchain.config.image_count);
 
         let command_buffers = unsafe {
             device
@@ -47,7 +47,7 @@ impl CommandPool {
         };
 
         for (&framebuffer, &command_buffer) in
-            graphics_pipeline.framebuffers.iter().zip(&command_buffers)
+            graphics_pipeline.swapchain.framebuffers.iter().zip(&command_buffers)
         {
             let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder();
 
@@ -68,7 +68,7 @@ impl CommandPool {
                 .framebuffer(framebuffer)
                 .render_area(
                     vk::Rect2D::builder()
-                        .extent(graphics_pipeline.swapchain.extent)
+                        .extent(graphics_pipeline.swapchain.config.extent)
                         .build(),
                 )
                 .clear_values(&clear_values);

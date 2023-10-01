@@ -5,7 +5,7 @@ use winit::window::Window;
 
 use crate::{
     instance::Instance,
-    util::{self, Destroy},
+    util::{self, info, Destroy},
 };
 
 pub struct Surface {
@@ -13,9 +13,16 @@ pub struct Surface {
     pub loader: ash::extensions::khr::Surface,
 }
 
-pub struct SurfaceDetails {
+pub struct SurfaceConfiguration {
+    pub surface_format: vk::SurfaceFormatKHR,
+    pub present_mode: vk::PresentModeKHR,
+    pub extent: vk::Extent2D,
+    pub image_count: u32,
+}
+
+pub struct SurfaceConfigurationOptions {
     pub capabilities: vk::SurfaceCapabilitiesKHR,
-    pub formats: Vec<vk::SurfaceFormatKHR>,
+    pub surface_formats: Vec<vk::SurfaceFormatKHR>,
     pub present_modes: Vec<vk::PresentModeKHR>,
 }
 
@@ -27,13 +34,12 @@ impl Surface {
         Self { surface, loader }
     }
 
-    pub fn get_details(&self, physical_device: vk::PhysicalDevice) -> SurfaceDetails {
-        let capabilities = unsafe {
-            self.loader
-                .get_physical_device_surface_capabilities(physical_device, self.surface)
-                .expect("Failed to get surface capabilities")
-        };
-        let formats = unsafe {
+    pub fn get_config_options(
+        &self,
+        physical_device: vk::PhysicalDevice,
+    ) -> SurfaceConfigurationOptions {
+        let capabilities = self.get_capabilities(physical_device);
+        let surface_formats = unsafe {
             self.loader
                 .get_physical_device_surface_formats(physical_device, self.surface)
                 .expect("Failed to get surface formats")
@@ -44,10 +50,81 @@ impl Surface {
                 .expect("Failed to get surface present modes")
         };
 
-        SurfaceDetails {
+        SurfaceConfigurationOptions {
             capabilities,
-            formats,
+            surface_formats,
             present_modes,
+        }
+    }
+
+    pub fn get_capabilities(
+        &self,
+        physical_device: vk::PhysicalDevice,
+    ) -> vk::SurfaceCapabilitiesKHR {
+        unsafe {
+            self.loader
+                .get_physical_device_surface_capabilities(physical_device, self.surface)
+                .expect("Failed to get surface capabilities")
+        }
+    }
+}
+
+impl SurfaceConfigurationOptions {
+    pub fn is_populated(&self) -> bool {
+        !self.surface_formats.is_empty() && !self.present_modes.is_empty()
+    }
+
+    pub fn get_optimal(&self) -> SurfaceConfiguration {
+        let surface_format = Self::choose_best_surface_format(&self.surface_formats);
+        let extent = Self::choose_extent(&self.capabilities);
+        let image_count = Self::choose_image_count(&self.capabilities);
+        let present_mode = Self::choose_best_present_mode(&self.present_modes);
+
+        SurfaceConfiguration {
+            surface_format,
+            present_mode,
+            extent,
+            image_count,
+        }
+    }
+
+    fn choose_best_surface_format(formats: &[vk::SurfaceFormatKHR]) -> vk::SurfaceFormatKHR {
+        formats
+            .iter()
+            .copied()
+            .find(|&format| format == info::PREFERRED_SURFACE_FORMAT)
+            .unwrap_or_else(|| formats[0])
+    }
+
+    fn choose_best_present_mode(present_modes: &[vk::PresentModeKHR]) -> vk::PresentModeKHR {
+        present_modes
+            .iter()
+            .copied()
+            .find(|&format| format == info::PREFERRED_PRESENT_MODE)
+            .unwrap_or(info::FALLBACK_PRESENT_MODE)
+    }
+
+    pub fn choose_extent(capabilities: &vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
+        if capabilities.current_extent.width != u32::MAX {
+            return capabilities.current_extent;
+        }
+
+        vk::Extent2D {
+            width: capabilities.current_extent.width
+                .max(capabilities.min_image_extent.width)
+                .min(capabilities.max_image_extent.width),
+            height: capabilities.current_extent.height
+                .max(capabilities.min_image_extent.height)
+                .min(capabilities.max_image_extent.height),
+        }
+    }
+
+    fn choose_image_count(capabilities: &vk::SurfaceCapabilitiesKHR) -> u32 {
+        let image_count = capabilities.min_image_count + 1;
+        if capabilities.max_image_count > 0 {
+            image_count.min(capabilities.max_image_count)
+        } else {
+            image_count
         }
     }
 }
@@ -68,11 +145,5 @@ impl Deref for Surface {
 impl DerefMut for Surface {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.surface
-    }
-}
-
-impl SurfaceDetails {
-    pub fn is_populated(&self) -> bool {
-        !self.formats.is_empty() && !self.present_modes.is_empty()
     }
 }

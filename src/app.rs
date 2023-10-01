@@ -3,7 +3,6 @@ use std::time::Instant;
 use ash::vk;
 
 use winit::{
-    dpi::LogicalSize,
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
@@ -98,7 +97,7 @@ impl App {
     }
 
     fn render(&mut self) {
-        let (image_index, _) = unsafe {
+        let image_index = unsafe {
             self.device
                 .wait_for_fences(
                     &self.in_flight[util::solo_range(self.current_frame)],
@@ -106,10 +105,6 @@ impl App {
                     u64::MAX,
                 )
                 .expect("Failed to wait for `in_flight` fence");
-
-            self.device
-                .reset_fences(&self.in_flight[util::solo_range(self.current_frame)])
-                .expect("Failed to reset `in_flight` fence");
 
             self.graphics_pipeline
                 .swapchain
@@ -120,7 +115,8 @@ impl App {
                     self.image_available[self.current_frame],
                     vk::Fence::null(),
                 )
-                .expect("Failed to acquite next image")
+                .expect("Failed to acquire next swap chain image")
+                .0
         };
 
         let render_finished = &self.render_finished[util::solo_range(self.current_frame)];
@@ -134,12 +130,16 @@ impl App {
 
         unsafe {
             self.device
+                .reset_fences(&self.in_flight[util::solo_range(self.current_frame)])
+                .expect("Failed to reset `in_flight` fence");
+
+            self.device
                 .queue_submit(
                     self.device.graphics_queue,
                     &submit_infos,
                     self.in_flight[self.current_frame],
                 )
-                .expect("Failed to submit through `graphics` queue");
+                .expect("Failed to submit through the `graphics` queue");
         }
 
         let swapchains = [self.graphics_pipeline.swapchain.swapchain];
@@ -155,21 +155,21 @@ impl App {
                 .swapchain
                 .loader
                 .queue_present(self.device.present_queue, &present_info)
-                .expect("Failed to present through `present` queue");
+                .expect("Failed to present through the `present` queue");
         }
 
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
-        
+
         let now = Instant::now();
         let fps = (now - self.last_time).as_secs_f32().recip() as u32;
-        print!("FPS: {:?}\r", fps);
+        print!("FPS: {:6?}\r", fps);
         self.last_time = now;
     }
 
     pub fn init_window(event_loop: &EventLoop<()>) -> Window {
         WindowBuilder::new()
             .with_title(info::WINDOW_TITLE)
-            .with_inner_size(LogicalSize::<u32>::from(info::WINDOW_SIZE))
+            .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)))
             .build(event_loop)
             .expect("Failed to create a window")
     }
@@ -203,11 +203,9 @@ impl App {
 
 impl Drop for App {
     fn drop(&mut self) {
-        unsafe {
-            self.device
-                .device_wait_idle()
-                .expect("Failed to wait for idle");
+        self.device.wait_until_idle();
 
+        unsafe {
             for i in 0..MAX_FRAMES_IN_FLIGHT {
                 self.device.destroy_semaphore(self.image_available[i], None);
                 self.device.destroy_semaphore(self.render_finished[i], None);
