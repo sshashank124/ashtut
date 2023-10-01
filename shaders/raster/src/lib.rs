@@ -3,11 +3,7 @@
 use spirv_std::glam::{vec2, vec3, Vec2, Vec3, Vec4};
 use spirv_std::spirv;
 
-const VERTICES: [Vec2; 3] = [
-    vec2( 0.0, -0.5),
-    vec2(-0.5,  0.5),
-    vec2( 0.5,  0.5),
-];
+const VERTICES: [Vec2; 3] = [vec2(0.0, -0.5), vec2(-0.5, 0.5), vec2(0.5, 0.5)];
 
 const COLORS: [Vec3; 3] = [
     vec3(1.0, 0.0, 0.0),

@@ -17,16 +17,19 @@ pub struct Validator {
 }
 
 impl Validator {
-    pub fn setup(entry: &ash::Entry, instance: &ash::Instance) -> Self {
+    pub fn setup(
+        entry: &ash::Entry,
+        instance: &ash::Instance,
+        debug_info: vk::DebugUtilsMessengerCreateInfoEXT,
+    ) -> Self {
         let debug_utils_loader = ash::extensions::ext::DebugUtils::new(entry, instance);
 
         let debug_messenger = if !VALIDATE_LAYERS {
             vk::DebugUtilsMessengerEXT::null()
         } else {
-            let create_info = debug_messenger_create_info();
             unsafe {
                 debug_utils_loader
-                    .create_debug_utils_messenger(&create_info, None)
+                    .create_debug_utils_messenger(&debug_info, None)
                     .expect("Failed to create debug utils messenger")
             }
         };
@@ -36,35 +39,60 @@ impl Validator {
             debug_messenger,
         }
     }
-}
 
-impl Destroy<()> for Validator {
-    fn destroy_with(&self, _: ()) {
-        if VALIDATE_LAYERS {
-            unsafe {
-                self.debug_utils_loader
-                    .destroy_debug_utils_messenger(self.debug_messenger, None);
+    pub fn check_validation_layer_support(entry: &ash::Entry) {
+        if !VALIDATE_LAYERS {
+            return;
+        }
+
+        let available_layers = entry
+            .enumerate_instance_layer_properties()
+            .expect("Failed to enumerate instance layers")
+            .into_iter()
+            .map(|l| util::bytes_to_string(l.layer_name.as_ptr()))
+            .collect::<HashSet<_>>();
+
+        for &req_layer in VALIDATION_LAYERS {
+            let req_layer = util::bytes_to_string(req_layer);
+            if !available_layers.contains(&req_layer) {
+                panic!("Layer {req_layer} not found");
             }
         }
     }
-}
 
-pub fn check_validation_layer_support(entry: &ash::Entry) {
-    if !VALIDATE_LAYERS {
-        return;
+    pub fn add_validation_to_instance<'a>(
+        instance_create_info: vk::InstanceCreateInfoBuilder<'a>,
+        debug_info: &'a mut vk::DebugUtilsMessengerCreateInfoEXT,
+    ) -> vk::InstanceCreateInfoBuilder<'a> {
+        if !VALIDATE_LAYERS {
+            return instance_create_info;
+        }
+        instance_create_info
+            .enabled_layer_names(VALIDATION_LAYERS)
+            .push_next(debug_info)
     }
 
-    let available_layers = entry
-        .enumerate_instance_layer_properties()
-        .expect("Failed to enumerate instance layers")
-        .into_iter()
-        .map(|l| util::bytes_to_string(l.layer_name.as_ptr()))
-        .collect::<HashSet<_>>();
+    pub fn debug_messenger_create_info() -> vk::DebugUtilsMessengerCreateInfoEXT {
+        vk::DebugUtilsMessengerCreateInfoEXT::builder()
+            .message_severity(
+                vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
+                    | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
+            )
+            .message_type(
+                vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                    | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
+                    | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
+            )
+            .pfn_user_callback(Some(debug_callback))
+            .build()
+    }
+}
 
-    for &req_layer in VALIDATION_LAYERS {
-        let req_layer = util::bytes_to_string(req_layer);
-        if !available_layers.contains(&req_layer) {
-            panic!("Layer {req_layer} not found");
+impl Destroy<()> for Validator {
+    unsafe fn destroy_with(&self, _: ()) {
+        if VALIDATE_LAYERS {
+            self.debug_utils_loader
+                .destroy_debug_utils_messenger(self.debug_messenger, None);
         }
     }
 }
@@ -80,18 +108,4 @@ unsafe extern "system" fn debug_callback(
     let message = util::bytes_to_string((*p_callback_data).p_message);
     println!("[{}][{}] {}", severity, types, message);
     vk::FALSE
-}
-
-pub fn debug_messenger_create_info<'a>() -> vk::DebugUtilsMessengerCreateInfoEXTBuilder<'a> {
-    vk::DebugUtilsMessengerCreateInfoEXT::builder()
-        .message_severity(
-            vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING,
-        )
-        .message_type(
-            vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
-                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION,
-        )
-        .pfn_user_callback(Some(debug_callback))
 }

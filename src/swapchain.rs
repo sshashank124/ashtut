@@ -1,41 +1,37 @@
 use ash::{extensions::khr, vk};
 
-use crate::{
-    device::Device, instance::Instance, physical_device::PhysicalDevice, render_pass::RenderPass,
-    surface::SurfaceConfiguration, util::Destroy,
-};
+use crate::{device::Device, instance::Instance, surface::Surface, util::Destroy};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
     pub loader: khr::Swapchain,
-    pub config: SurfaceConfiguration,
     pub image_views: Vec<vk::ImageView>,
     pub framebuffers: Vec<vk::Framebuffer>,
 }
 
 impl Swapchain {
     pub fn create(
-        instance: &Instance,
-        physical_device: &PhysicalDevice,
         device: &Device,
-        render_pass: &RenderPass,
-        mut config: SurfaceConfiguration,
+        surface: &mut Surface,
+        render_pass: vk::RenderPass,
+        instance: &Instance,
     ) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::builder()
-            .surface(*physical_device.surface)
-            .min_image_count(config.image_count)
-            .image_format(config.surface_format.format)
-            .image_color_space(config.surface_format.color_space)
-            .image_extent(config.extent)
+            .surface(**surface)
+            .min_image_count(surface.config.image_count)
+            .image_format(surface.config.surface_format.format)
+            .image_color_space(surface.config.surface_format.color_space)
+            .image_extent(surface.config.extent)
             .image_array_layers(1)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
             .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(config.present_mode)
+            .present_mode(surface.config.present_mode)
             .clipped(true);
 
-        let create_info = if let Some(different_indices) = physical_device
-            .indices
+        let create_info = if let Some(different_indices) = device
+            .queue
+            .families
             .separate_graphics_and_presentation_indices()
         {
             create_info
@@ -59,16 +55,16 @@ impl Swapchain {
                 .expect("Failed to get swapchain images")
         };
 
-        config.image_count = images.len() as u32;
+        surface.config.image_count = images.len() as u32;
 
-        let image_views = Self::create_image_views(device, config.surface_format.format, &images);
+        let image_views =
+            Self::create_image_views(device, surface.config.surface_format.format, &images);
         let framebuffers =
-            Self::create_framebuffers(device, render_pass, config.extent, &image_views);
+            Self::create_framebuffers(device, render_pass, surface.config.extent, &image_views);
 
         Self {
             swapchain,
             loader,
-            config,
             image_views,
             framebuffers,
         }
@@ -102,7 +98,7 @@ impl Swapchain {
 
     fn create_framebuffers(
         device: &Device,
-        render_pass: &RenderPass,
+        render_pass: vk::RenderPass,
         extent: vk::Extent2D,
         image_views: &[vk::ImageView],
     ) -> Vec<vk::Framebuffer> {
@@ -111,7 +107,7 @@ impl Swapchain {
             .map(|&image_view| {
                 let attachments = [image_view];
                 let create_info = vk::FramebufferCreateInfo::builder()
-                    .render_pass(**render_pass)
+                    .render_pass(render_pass)
                     .attachments(&attachments)
                     .width(extent.width)
                     .height(extent.height)
@@ -124,18 +120,42 @@ impl Swapchain {
             })
             .collect()
     }
+
+    pub unsafe fn acquire_next_image(&self, signal_to: vk::Semaphore) -> u32 {
+        self.loader
+            .acquire_next_image(self.swapchain, u64::MAX, signal_to, vk::Fence::null())
+            .expect("Failed to acquire next swap chain image")
+            .0
+    }
+
+    pub unsafe fn present_to_when(
+        &self,
+        device: &Device,
+        image_index: u32,
+        wait_on: &[vk::Semaphore],
+    ) {
+        let swapchains = [self.swapchain];
+        let image_indices = [image_index];
+
+        let present_info = vk::PresentInfoKHR::builder()
+            .wait_semaphores(wait_on)
+            .swapchains(&swapchains)
+            .image_indices(&image_indices);
+
+        self.loader
+            .queue_present(device.queue.present, &present_info)
+            .expect("Failed to present through the `present` queue");
+    }
 }
 
 impl<'a> Destroy<&'a Device> for Swapchain {
-    fn destroy_with(&self, device: &'a Device) {
-        unsafe {
-            for &framebuffer in &self.framebuffers {
-                device.destroy_framebuffer(framebuffer, None);
-            }
-            for &image_view in &self.image_views {
-                device.destroy_image_view(image_view, None);
-            }
-            self.loader.destroy_swapchain(self.swapchain, None);
+    unsafe fn destroy_with(&self, device: &'a Device) {
+        for &framebuffer in &self.framebuffers {
+            device.destroy_framebuffer(framebuffer, None);
         }
+        for &image_view in &self.image_views {
+            device.destroy_image_view(image_view, None);
+        }
+        self.loader.destroy_swapchain(self.swapchain, None);
     }
 }

@@ -1,12 +1,7 @@
 mod app;
-mod command_pool;
 mod device;
 mod instance;
-mod features;
-mod graphics_pipeline;
-mod physical_device;
-mod render_pass;
-mod shader_module;
+mod render_pipeline;
 mod surface;
 mod swapchain;
 mod util;

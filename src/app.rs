@@ -1,189 +1,67 @@
 use std::time::Instant;
 
-use ash::vk;
-
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::EventLoop,
     window::{Window, WindowBuilder},
 };
 
 use crate::{
-    command_pool::CommandPool,
     device::Device,
-    graphics_pipeline::GraphicsPipeline,
     instance::Instance,
-    physical_device::PhysicalDevice,
-    util::{self, info, Destroy},
+    render_pipeline::RenderPipeline,
+    surface::Surface,
+    util::{info, Destroy},
 };
 
 pub struct App {
     instance: Instance,
-    physical_device: PhysicalDevice,
+    surface: Surface,
     device: Device,
-    graphics_pipeline: GraphicsPipeline,
-    command_pool: CommandPool,
+    render_pipeline: RenderPipeline,
 
-    image_available: Vec<vk::Semaphore>,
-    render_finished: Vec<vk::Semaphore>,
-    in_flight: Vec<vk::Fence>,
-    current_frame: usize,
-
-    last_time: Instant,
+    last_frame: Instant,
 }
-
-const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 impl App {
     pub fn new(window: &Window) -> Self {
-        let instance = Instance::create();
-        let physical_device = PhysicalDevice::pick(&instance, window);
-        let device = Device::create(&instance, &physical_device);
-        let graphics_pipeline = GraphicsPipeline::create(&instance, &physical_device, &device);
-        let command_pool = CommandPool::create(&physical_device, &device, &graphics_pipeline);
-
-        let (image_available_semaphores, render_finished_semaphores, in_flight_fences) =
-            Self::create_synchronizers(&device);
+        let instance = Instance::new();
+        let surface_descriptor = instance.create_surface_on(window);
+        let (device, mut surface) = instance.request_device_for(surface_descriptor);
+        let render_pipeline = RenderPipeline::create(&device, &mut surface, &instance);
 
         Self {
             instance,
-            physical_device,
+            surface,
             device,
-            graphics_pipeline,
-            command_pool,
+            render_pipeline,
 
-            image_available: image_available_semaphores,
-            render_finished: render_finished_semaphores,
-            in_flight: in_flight_fences,
-            current_frame: 0,
-            last_time: Instant::now(),
+            last_frame: Instant::now(),
         }
-    }
-
-    fn create_synchronizers(
-        device: &Device,
-    ) -> (Vec<vk::Semaphore>, Vec<vk::Semaphore>, Vec<vk::Fence>) {
-        let semaphore_create_info = vk::SemaphoreCreateInfo::builder();
-        let fence_create_info =
-            vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-
-        let mut image_available_semaphores = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
-        let mut render_finished_semaphores = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
-        let mut in_flight_fences = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
-
-        for _ in 0..MAX_FRAMES_IN_FLIGHT {
-            image_available_semaphores.push(unsafe {
-                device
-                    .create_semaphore(&semaphore_create_info, None)
-                    .expect("Failed to create `image_available` semaphore")
-            });
-            render_finished_semaphores.push(unsafe {
-                device
-                    .create_semaphore(&semaphore_create_info, None)
-                    .expect("Failed to create `render_finished` semaphore")
-            });
-            in_flight_fences.push(unsafe {
-                device
-                    .create_fence(&fence_create_info, None)
-                    .expect("Failed to create `in_flight` fence")
-            });
-        }
-
-        (
-            image_available_semaphores,
-            render_finished_semaphores,
-            in_flight_fences,
-        )
     }
 
     fn render(&mut self) {
-        let image_index = unsafe {
-            self.device
-                .wait_for_fences(
-                    &self.in_flight[util::solo_range(self.current_frame)],
-                    true,
-                    u64::MAX,
-                )
-                .expect("Failed to wait for `in_flight` fence");
-
-            self.graphics_pipeline
-                .swapchain
-                .loader
-                .acquire_next_image(
-                    self.graphics_pipeline.swapchain.swapchain,
-                    u64::MAX,
-                    self.image_available[self.current_frame],
-                    vk::Fence::null(),
-                )
-                .expect("Failed to acquire next swap chain image")
-                .0
-        };
-
-        let render_finished = &self.render_finished[util::solo_range(self.current_frame)];
-
-        let submit_infos = [vk::SubmitInfo::builder()
-            .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-            .wait_semaphores(&self.image_available[util::solo_range(self.current_frame)])
-            .command_buffers(&self.command_pool.buffers[util::solo_range(image_index as usize)])
-            .signal_semaphores(render_finished)
-            .build()];
-
-        unsafe {
-            self.device
-                .reset_fences(&self.in_flight[util::solo_range(self.current_frame)])
-                .expect("Failed to reset `in_flight` fence");
-
-            self.device
-                .queue_submit(
-                    self.device.graphics_queue,
-                    &submit_infos,
-                    self.in_flight[self.current_frame],
-                )
-                .expect("Failed to submit through the `graphics` queue");
-        }
-
-        let swapchains = [self.graphics_pipeline.swapchain.swapchain];
-        let image_indices = [image_index];
-
-        let present_info = vk::PresentInfoKHR::builder()
-            .wait_semaphores(render_finished)
-            .swapchains(&swapchains)
-            .image_indices(&image_indices);
-
-        unsafe {
-            self.graphics_pipeline
-                .swapchain
-                .loader
-                .queue_present(self.device.present_queue, &present_info)
-                .expect("Failed to present through the `present` queue");
-        }
-
-        self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
+        self.render_pipeline.render(&self.device);
 
         let now = Instant::now();
-        let fps = (now - self.last_time).as_secs_f32().recip() as u32;
+        let fps = (now - self.last_frame).as_secs_f32().recip() as u32;
         print!("FPS: {:6?}\r", fps);
-        self.last_time = now;
+        self.last_frame = now;
     }
 
     pub fn init_window(event_loop: &EventLoop<()>) -> Window {
         WindowBuilder::new()
             .with_title(info::WINDOW_TITLE)
-            .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)))
+            // .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)))
             .build(event_loop)
             .expect("Failed to create a window")
     }
 
     pub fn run(mut self, event_loop: EventLoop<()>, window: Window) {
         event_loop.run(move |event, _, control_flow| match event {
-            Event::RedrawRequested(window_id) if window_id == window.id() => {
-                self.render();
-            }
+            Event::RedrawRequested(_) => self.render(),
             Event::MainEventsCleared => window.request_redraw(),
-            Event::WindowEvent {
-                window_id,
-                ref event,
-            } if window_id == window.id() => match event {
+            Event::WindowEvent { ref event, .. } => match event {
                 WindowEvent::CloseRequested
                 | WindowEvent::KeyboardInput {
                     input:
@@ -193,7 +71,7 @@ impl App {
                             ..
                         },
                     ..
-                } => *control_flow = ControlFlow::Exit,
+                } => control_flow.set_exit(),
                 _ => {}
             },
             _ => {}
@@ -203,20 +81,13 @@ impl App {
 
 impl Drop for App {
     fn drop(&mut self) {
-        self.device.wait_until_idle();
-
         unsafe {
-            for i in 0..MAX_FRAMES_IN_FLIGHT {
-                self.device.destroy_semaphore(self.image_available[i], None);
-                self.device.destroy_semaphore(self.render_finished[i], None);
-                self.device.destroy_fence(self.in_flight[i], None);
-            }
-        }
+            self.device.wait_until_idle();
 
-        self.command_pool.destroy_with(&self.device);
-        self.graphics_pipeline.destroy_with(&self.device);
-        self.device.destroy_with(());
-        self.physical_device.destroy_with(());
-        self.instance.destroy_with(());
+            self.render_pipeline.destroy_with(&self.device);
+            self.device.destroy_with(());
+            self.surface.destroy_with(());
+            self.instance.destroy_with(());
+        }
     }
 }
