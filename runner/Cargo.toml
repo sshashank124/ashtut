@@ -1,0 +1,12 @@
+[package]
+name = "runner"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+ash = { version = "0.37", features = ["linked"] }
+shared = { path = "../shared" }
+winit = "0.28"
+
+[build-dependencies]
+spirv-builder = "0.9"

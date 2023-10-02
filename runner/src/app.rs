@@ -58,21 +58,14 @@ impl App {
     }
 
     fn recreate(&mut self) {
-        let prerecreate = Instant::now();
-
         unsafe { self.device.wait_until_idle() };
-
         self.surface
             .refresh_capabilities(self.device.physical_device);
-
         if !self.surface.config.invalid_extent() {
             self.render_pipeline
                 .recreate(&self.device, &mut self.surface, &self.instance);
         }
-
         self.resized = false;
-
-        println!("Recreating took {:?}", Instant::now() - prerecreate);
     }
 
     pub fn init_window(event_loop: &EventLoop<()>) -> Window {

@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(target_arch = "spirv", no_std)]
 
 use spirv_std::glam::{vec2, vec3, Vec2, Vec3, Vec4};
 use spirv_std::spirv;
