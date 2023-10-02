@@ -9,14 +9,13 @@ use crate::{
 };
 
 pub struct Surface {
-    surface: vk::SurfaceKHR,
-    loader: ash::extensions::khr::Surface,
+    inner: SurfaceDescriptor,
     pub config: SurfaceConfig,
 }
 
 pub struct SurfaceDescriptor {
-    surface: vk::SurfaceKHR,
-    loader: ash::extensions::khr::Surface,
+    pub surface: vk::SurfaceKHR,
+    pub loader: ash::extensions::khr::Surface,
 }
 
 pub struct SurfaceConfig {
@@ -32,6 +31,13 @@ pub struct SurfaceConfigurationOptions {
     present_modes: Vec<vk::PresentModeKHR>,
 }
 
+impl Surface {
+    pub fn refresh_capabilities(&mut self, physical_device: vk::PhysicalDevice) {
+        self.config
+            .update_with(&self.get_capabilities(physical_device));
+    }
+}
+
 impl SurfaceDescriptor {
     pub fn new(instance: &Instance, window: &Window) -> Self {
         let surface = util::platform::create_surface(instance, window);
@@ -42,8 +48,7 @@ impl SurfaceDescriptor {
 
     pub fn with_config(self, config: SurfaceConfig) -> Surface {
         Surface {
-            surface: self.surface,
-            loader: self.loader,
+            inner: self,
             config,
         }
     }
@@ -163,20 +168,49 @@ impl SurfaceConfigurationOptions {
     }
 }
 
+impl SurfaceConfig {
+    pub fn update_with(&mut self, surface_capabilities: &vk::SurfaceCapabilitiesKHR) {
+        self.extent = SurfaceConfigurationOptions::choose_extent(surface_capabilities);
+    }
+
+    pub fn invalid_extent(&self) -> bool {
+        self.extent.width == 0 || self.extent.height == 0
+    }
+}
+
 impl Destroy<()> for Surface {
+    unsafe fn destroy_with(&self, input: ()) {
+        self.inner.destroy_with(input)
+    }
+}
+
+impl Deref for Surface {
+    type Target = SurfaceDescriptor;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl DerefMut for Surface {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
+}
+
+impl Destroy<()> for SurfaceDescriptor {
     unsafe fn destroy_with(&self, _: ()) {
         self.loader.destroy_surface(self.surface, None);
     }
 }
 
-impl Deref for Surface {
+impl Deref for SurfaceDescriptor {
     type Target = vk::SurfaceKHR;
     fn deref(&self) -> &Self::Target {
         &self.surface
     }
 }
 
-impl DerefMut for Surface {
+impl DerefMut for SurfaceDescriptor {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.surface
     }

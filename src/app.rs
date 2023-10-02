@@ -9,7 +9,7 @@ use winit::{
 use crate::{
     device::Device,
     instance::Instance,
-    render_pipeline::RenderPipeline,
+    render_pipeline::{RenderError, RenderPipeline},
     surface::Surface,
     util::{info, Destroy},
 };
@@ -20,6 +20,7 @@ pub struct App {
     device: Device,
     render_pipeline: RenderPipeline,
 
+    resized: bool,
     last_frame: Instant,
 }
 
@@ -36,17 +37,42 @@ impl App {
             device,
             render_pipeline,
 
+            resized: false,
             last_frame: Instant::now(),
         }
     }
 
     fn render(&mut self) {
-        self.render_pipeline.render(&self.device);
+        if self.resized {
+            self.recreate();
+        }
+
+        if let Err(RenderError::NeedsRecreating) = self.render_pipeline.render(&self.device) {
+            self.resized = true;
+        }
 
         let now = Instant::now();
         let fps = (now - self.last_frame).as_secs_f32().recip() as u32;
         print!("FPS: {:6?}\r", fps);
         self.last_frame = now;
+    }
+
+    fn recreate(&mut self) {
+        let prerecreate = Instant::now();
+
+        unsafe { self.device.wait_until_idle() };
+
+        self.surface
+            .refresh_capabilities(self.device.physical_device);
+
+        if !self.surface.config.invalid_extent() {
+            self.render_pipeline
+                .recreate(&self.device, &mut self.surface, &self.instance);
+        }
+
+        self.resized = false;
+
+        println!("Recreating took {:?}", Instant::now() - prerecreate);
     }
 
     pub fn init_window(event_loop: &EventLoop<()>) -> Window {
@@ -62,6 +88,9 @@ impl App {
             Event::RedrawRequested(_) => self.render(),
             Event::MainEventsCleared => window.request_redraw(),
             Event::WindowEvent { ref event, .. } => match event {
+                WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                    self.resized = true;
+                }
                 WindowEvent::CloseRequested
                 | WindowEvent::KeyboardInput {
                     input:

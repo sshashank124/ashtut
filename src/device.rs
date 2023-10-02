@@ -12,6 +12,7 @@ use crate::{
 };
 
 pub struct Device {
+    pub physical_device: vk::PhysicalDevice,
     device: ash::Device,
     pub queue: Queue,
 }
@@ -58,7 +59,11 @@ impl Device {
             }
         };
 
-        Self { device, queue }
+        Self {
+            physical_device,
+            device,
+            queue,
+        }
     }
 
     pub fn create_command_pool(&self) -> vk::CommandPool {

@@ -1,3 +1,5 @@
+use std::ops::Not;
+
 use ash::vk;
 
 use crate::{
@@ -25,21 +27,25 @@ struct SyncState {
     current_frame: usize,
 }
 
+pub enum RenderError {
+    NeedsRecreating,
+}
+
 impl RenderPipeline {
     pub fn create(device: &Device, surface: &mut Surface, instance: &Instance) -> Self {
         let render_pass = Self::create_render_pass(device, surface.config.surface_format.format);
-        let swapchain = Swapchain::create(device, surface, render_pass, instance);
-        let (pipeline, layout) = Self::create_pipeline(device, surface.config.extent, render_pass);
+        let (pipeline, layout) = Self::create_pipeline(device, render_pass);
         let command_pool = device.create_command_pool();
-        let command_buffers = Self::create_command_buffers(
+        let state = SyncState::create(device);
+
+        let (swapchain, command_buffers) = Self::create_expendables(
             device,
-            &surface.config,
+            surface,
+            instance,
             render_pass,
-            &swapchain,
             pipeline,
             command_pool,
         );
-        let state = SyncState::create(device);
 
         Self {
             render_pass,
@@ -52,9 +58,29 @@ impl RenderPipeline {
         }
     }
 
+    fn create_expendables(
+        device: &Device,
+        surface: &mut Surface,
+        instance: &Instance,
+        render_pass: vk::RenderPass,
+        pipeline: vk::Pipeline,
+        command_pool: vk::CommandPool,
+    ) -> (Swapchain, Vec<vk::CommandBuffer>) {
+        let swapchain = Swapchain::create(device, surface, render_pass, instance);
+        let command_buffers = Self::create_command_buffers(
+            device,
+            &surface.config,
+            render_pass,
+            &swapchain,
+            pipeline,
+            command_pool,
+        );
+
+        (swapchain, command_buffers)
+    }
+
     fn create_pipeline(
         device: &Device,
-        surface_extent: vk::Extent2D,
         render_pass: vk::RenderPass,
     ) -> (vk::Pipeline, vk::PipelineLayout) {
         let shader_module = util::create_shader_module_from_file(device, info::SHADER_FILE);
@@ -77,17 +103,7 @@ impl RenderPipeline {
         let input_assembly_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
 
-        let viewports = [vk::Viewport::builder()
-            .width(surface_extent.width as f32)
-            .height(surface_extent.height as f32)
-            .max_depth(1.0)
-            .build()];
-
-        let scissors = [vk::Rect2D::builder().extent(surface_extent).build()];
-
-        let viewport_info = vk::PipelineViewportStateCreateInfo::builder()
-            .viewports(&viewports)
-            .scissors(&scissors);
+        let viewport_info = vk::PipelineViewportStateCreateInfo::builder();
 
         let rasterization_info = vk::PipelineRasterizationStateCreateInfo::builder()
             .line_width(1.0)
@@ -110,6 +126,14 @@ impl RenderPipeline {
         let color_blend_info =
             vk::PipelineColorBlendStateCreateInfo::builder().attachments(&color_blend_attachments);
 
+        let dynamic_states = [
+            vk::DynamicState::VIEWPORT_WITH_COUNT,
+            vk::DynamicState::SCISSOR_WITH_COUNT,
+        ];
+
+        let dynamic_state_info =
+            vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_states);
+
         let layout_create_info = vk::PipelineLayoutCreateInfo::builder();
 
         let layout = unsafe {
@@ -128,6 +152,7 @@ impl RenderPipeline {
             .color_blend_state(&color_blend_info)
             .layout(layout)
             .render_pass(render_pass)
+            .dynamic_state(&dynamic_state_info)
             .build()];
 
         let pipeline = unsafe {
@@ -231,6 +256,17 @@ impl RenderPipeline {
                     vk::SubpassContents::INLINE,
                 );
                 device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
+
+                let viewports = [vk::Viewport::builder()
+                    .width(surface_config.extent.width as f32)
+                    .height(surface_config.extent.height as f32)
+                    .max_depth(1.0)
+                    .build()];
+                device.cmd_set_viewport_with_count(command_buffer, &viewports);
+
+                let scissors = [vk::Rect2D::builder().extent(surface_config.extent).build()];
+                device.cmd_set_scissor_with_count(command_buffer, &scissors);
+
                 device.cmd_draw(command_buffer, 3, 1, 0, 0);
                 device.cmd_end_render_pass(command_buffer);
                 device
@@ -242,30 +278,37 @@ impl RenderPipeline {
         command_buffers
     }
 
-    pub fn render(&mut self, device: &Device) {
-        unsafe {
+    pub fn render(&mut self, device: &Device) -> Result<(), RenderError> {
+        let (image_index, needs_recreating) = unsafe {
             device
                 .wait_for_fences(self.state.in_flight_fence(), true, u64::MAX)
                 .expect("Failed to wait for `in_flight` fence");
 
-            let image_index = self
-                .swapchain
-                .acquire_next_image(self.state.image_available_semaphore()[0]);
+            self.swapchain
+                .acquire_next_image(self.state.image_available_semaphore()[0])
+        };
 
-            device
-                .reset_fences(self.state.in_flight_fence())
-                .expect("Failed to reset `in_flight` fence");
+        let needs_recreating = needs_recreating
+            || unsafe {
+                device
+                    .reset_fences(self.state.in_flight_fence())
+                    .expect("Failed to reset `in_flight` fence");
 
-            self.render_to(device, image_index);
+                self.render_to(device, image_index);
 
-            self.swapchain.present_to_when(
-                device,
-                image_index,
-                self.state.render_finished_semaphore(),
-            );
-        }
+                self.swapchain.present_to_when(
+                    device,
+                    image_index,
+                    self.state.render_finished_semaphore(),
+                )
+            };
 
         self.state.advance();
+
+        needs_recreating
+            .not()
+            .then_some(())
+            .ok_or(RenderError::NeedsRecreating)
     }
 
     unsafe fn render_to(&self, device: &Device, image_index: u32) {
@@ -284,15 +327,36 @@ impl RenderPipeline {
             )
             .expect("Failed to submit through the `graphics` queue");
     }
+
+    pub fn recreate(&mut self, device: &Device, surface: &mut Surface, instance: &Instance) {
+        unsafe {
+            self.destroy_expendables(device);
+        }
+        let (swapchain, command_buffers) = Self::create_expendables(
+            device,
+            surface,
+            instance,
+            self.render_pass,
+            self.pipeline,
+            self.command_pool,
+        );
+        self.swapchain = swapchain;
+        self.command_buffers = command_buffers;
+    }
+
+    pub unsafe fn destroy_expendables(&self, device: &Device) {
+        device.free_command_buffers(self.command_pool, &self.command_buffers);
+        self.swapchain.destroy_with(device);
+    }
 }
 
 impl<'a> Destroy<&'a Device> for RenderPipeline {
     unsafe fn destroy_with(&self, device: &'a Device) {
+        self.destroy_expendables(device);
         self.state.destroy_with(device);
         device.destroy_command_pool(self.command_pool, None);
         device.destroy_pipeline(self.pipeline, None);
         device.destroy_pipeline_layout(self.layout, None);
-        self.swapchain.destroy_with(device);
         device.destroy_render_pass(self.render_pass, None);
     }
 }

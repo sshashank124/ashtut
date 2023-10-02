@@ -17,7 +17,7 @@ impl Swapchain {
         instance: &Instance,
     ) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::builder()
-            .surface(**surface)
+            .surface(***surface)
             .min_image_count(surface.config.image_count)
             .image_format(surface.config.surface_format.format)
             .image_color_space(surface.config.surface_format.color_space)
@@ -121,19 +121,19 @@ impl Swapchain {
             .collect()
     }
 
-    pub unsafe fn acquire_next_image(&self, signal_to: vk::Semaphore) -> u32 {
+    pub unsafe fn acquire_next_image(&self, signal_to: vk::Semaphore) -> (u32, bool) {
         self.loader
             .acquire_next_image(self.swapchain, u64::MAX, signal_to, vk::Fence::null())
-            .expect("Failed to acquire next swap chain image")
-            .0
+            .unwrap_or((0, true))
     }
 
+    // Returns true if the swapchain needs recreating
     pub unsafe fn present_to_when(
         &self,
         device: &Device,
         image_index: u32,
         wait_on: &[vk::Semaphore],
-    ) {
+    ) -> bool {
         let swapchains = [self.swapchain];
         let image_indices = [image_index];
 
@@ -144,7 +144,7 @@ impl Swapchain {
 
         self.loader
             .queue_present(device.queue.present, &present_info)
-            .expect("Failed to present through the `present` queue");
+            .unwrap_or(true)
     }
 }
 
