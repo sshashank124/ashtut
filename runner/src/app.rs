@@ -28,8 +28,8 @@ impl App {
     pub fn new(window: &Window) -> Self {
         let instance = Instance::new();
         let surface_descriptor = instance.create_surface_on(window);
-        let (device, mut surface) = instance.request_device_for(surface_descriptor);
-        let render_pipeline = RenderPipeline::create(&device, &mut surface, &instance);
+        let (mut device, mut surface) = instance.request_device_for(surface_descriptor);
+        let render_pipeline = RenderPipeline::create(&mut device, &mut surface, &instance);
 
         Self {
             instance,
@@ -106,7 +106,7 @@ impl Drop for App {
         unsafe {
             self.device.wait_until_idle();
 
-            self.render_pipeline.destroy_with(&self.device);
+            self.render_pipeline.destroy_with(&mut self.device);
             self.device.destroy_with(());
             self.surface.destroy_with(());
             self.instance.destroy_with(());

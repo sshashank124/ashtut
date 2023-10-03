@@ -1,9 +1,11 @@
 use std::{
     collections::HashSet,
+    mem::ManuallyDrop,
     ops::{Deref, DerefMut},
 };
 
 use ash::vk;
+pub use gpu_allocator::vulkan as gpu_alloc;
 
 use crate::{
     instance::{Features, Instance},
@@ -15,6 +17,7 @@ pub struct Device {
     pub physical_device: vk::PhysicalDevice,
     device: ash::Device,
     pub queue: Queue,
+    pub allocator: ManuallyDrop<gpu_alloc::Allocator>,
 }
 
 pub struct Queue {
@@ -59,10 +62,23 @@ impl Device {
             }
         };
 
+        let allocator_create_info = gpu_alloc::AllocatorCreateDesc {
+            instance: (*instance).clone(),
+            device: device.clone(),
+            physical_device,
+            debug_settings: Default::default(),
+            buffer_device_address: false,
+            allocation_sizes: Default::default(),
+        };
+
+        let allocator =
+            gpu_alloc::Allocator::new(&allocator_create_info).expect("Failed to create allocator");
+
         Self {
             physical_device,
             device,
             queue,
+            allocator: ManuallyDrop::new(allocator),
         }
     }
 
@@ -186,7 +202,8 @@ impl QueueFamiliesInfo {
 }
 
 impl Destroy<()> for Device {
-    unsafe fn destroy_with(&self, _: ()) {
+    unsafe fn destroy_with(&mut self, _: ()) {
+        ManuallyDrop::drop(&mut self.allocator);
         self.device.destroy_device(None);
     }
 }

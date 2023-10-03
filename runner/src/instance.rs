@@ -143,7 +143,7 @@ impl Instance {
 }
 
 impl Destroy<()> for Instance {
-    unsafe fn destroy_with(&self, _: ()) {
+    unsafe fn destroy_with(&mut self, _: ()) {
         self.validator.destroy_with(());
         self.instance.destroy_instance(None);
     }

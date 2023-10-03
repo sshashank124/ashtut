@@ -1,4 +1,9 @@
+#![allow(incomplete_features)]
+#![feature(generic_const_exprs)]
+#![feature(offset_of)]
+
 mod app;
+mod buffer;
 mod device;
 mod instance;
 mod render_pipeline;
@@ -6,6 +11,7 @@ mod surface;
 mod swapchain;
 mod util;
 mod validator;
+mod vertex;
 
 use winit::event_loop::EventLoop;
 

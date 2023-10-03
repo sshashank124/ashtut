@@ -89,7 +89,7 @@ impl Validator {
 }
 
 impl Destroy<()> for Validator {
-    unsafe fn destroy_with(&self, _: ()) {
+    unsafe fn destroy_with(&mut self, _: ()) {
         if VALIDATE_LAYERS {
             self.debug_utils_loader
                 .destroy_debug_utils_messenger(self.debug_messenger, None);

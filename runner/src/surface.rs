@@ -179,7 +179,7 @@ impl SurfaceConfig {
 }
 
 impl Destroy<()> for Surface {
-    unsafe fn destroy_with(&self, input: ()) {
+    unsafe fn destroy_with(&mut self, input: ()) {
         self.inner.destroy_with(input)
     }
 }
@@ -198,7 +198,7 @@ impl DerefMut for Surface {
 }
 
 impl Destroy<()> for SurfaceDescriptor {
-    unsafe fn destroy_with(&self, _: ()) {
+    unsafe fn destroy_with(&mut self, _: ()) {
         self.loader.destroy_surface(self.surface, None);
     }
 }

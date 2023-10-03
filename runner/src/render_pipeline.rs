@@ -1,13 +1,16 @@
-use std::ops::Not;
+use std::{mem, ops::Not};
 
 use ash::vk;
 
+use shared::Vertex;
+
 use crate::{
+    buffer::Buffer,
     device::Device,
     instance::Instance,
     surface::{Surface, SurfaceConfig},
     swapchain::Swapchain,
-    util::{self, info, Destroy},
+    util::{self, info, Descriptors, Destroy},
 };
 
 pub struct RenderPipeline {
@@ -15,6 +18,7 @@ pub struct RenderPipeline {
     pub swapchain: Swapchain,
     pub pipeline: vk::Pipeline,
     layout: vk::PipelineLayout,
+    vertex_buffer: Buffer,
     command_pool: vk::CommandPool,
     pub command_buffers: Vec<vk::CommandBuffer>,
     state: SyncState,
@@ -31,10 +35,17 @@ pub enum RenderError {
     NeedsRecreating,
 }
 
+pub const VERTICES_DATA: [Vertex; 3] = [
+    Vertex::new([0.0, -0.5], [1.0, 1.0, 1.0]),
+    Vertex::new([-0.5, 0.5], [0.0, 1.0, 0.0]),
+    Vertex::new([0.5, 0.5], [0.0, 0.0, 1.0]),
+];
+
 impl RenderPipeline {
-    pub fn create(device: &Device, surface: &mut Surface, instance: &Instance) -> Self {
+    pub fn create(device: &mut Device, surface: &mut Surface, instance: &Instance) -> Self {
         let render_pass = Self::create_render_pass(device, surface.config.surface_format.format);
         let (pipeline, layout) = Self::create_pipeline(device, render_pass);
+        let vertex_buffer = Self::create_vertex_buffer(device);
         let command_pool = device.create_command_pool();
         let state = SyncState::create(device);
 
@@ -44,6 +55,7 @@ impl RenderPipeline {
             instance,
             render_pass,
             pipeline,
+            *vertex_buffer,
             command_pool,
         );
 
@@ -52,6 +64,7 @@ impl RenderPipeline {
             swapchain,
             pipeline,
             layout,
+            vertex_buffer,
             command_pool,
             command_buffers,
             state,
@@ -64,6 +77,7 @@ impl RenderPipeline {
         instance: &Instance,
         render_pass: vk::RenderPass,
         pipeline: vk::Pipeline,
+        vertex_buffer: vk::Buffer,
         command_pool: vk::CommandPool,
     ) -> (Swapchain, Vec<vk::CommandBuffer>) {
         let swapchain = Swapchain::create(device, surface, render_pass, instance);
@@ -73,6 +87,7 @@ impl RenderPipeline {
             render_pass,
             &swapchain,
             pipeline,
+            vertex_buffer,
             command_pool,
         );
 
@@ -98,7 +113,11 @@ impl RenderPipeline {
                 .build(),
         ];
 
-        let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder();
+        let vertex_bindings_description = Vertex::bindings_description();
+        let vertex_attributes_description = Vertex::attributes_description();
+        let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder()
+            .vertex_binding_descriptions(&vertex_bindings_description)
+            .vertex_attribute_descriptions(&vertex_attributes_description);
 
         let input_assembly_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
@@ -207,12 +226,28 @@ impl RenderPipeline {
         }
     }
 
+    fn create_vertex_buffer(device: &mut Device) -> Buffer {
+        let create_info = vk::BufferCreateInfo::builder()
+            .size(mem::size_of_val(&VERTICES_DATA) as u64)
+            .usage(vk::BufferUsageFlags::VERTEX_BUFFER)
+            .sharing_mode(vk::SharingMode::EXCLUSIVE);
+
+        Buffer::create_with(
+            device,
+            "Vertex Buffer",
+            &create_info,
+            gpu_allocator::MemoryLocation::CpuToGpu,
+            &VERTICES_DATA,
+        )
+    }
+
     fn create_command_buffers(
         device: &Device,
         surface_config: &SurfaceConfig,
         render_pass: vk::RenderPass,
         swapchain: &Swapchain,
         pipeline: vk::Pipeline,
+        vertex_buffer: vk::Buffer,
         command_pool: vk::CommandPool,
     ) -> Vec<vk::CommandBuffer> {
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
@@ -237,6 +272,8 @@ impl RenderPipeline {
             .clear_values(&clear_values)
             .build();
 
+        let vertex_buffers = [vertex_buffer];
+
         for (&framebuffer, &command_buffer) in swapchain.framebuffers.iter().zip(&command_buffers) {
             let command_buffer_info = vk::CommandBufferBeginInfo::builder();
 
@@ -255,6 +292,7 @@ impl RenderPipeline {
                     &render_pass_info,
                     vk::SubpassContents::INLINE,
                 );
+
                 device.cmd_bind_pipeline(command_buffer, vk::PipelineBindPoint::GRAPHICS, pipeline);
 
                 let viewports = [vk::Viewport::builder()
@@ -267,8 +305,10 @@ impl RenderPipeline {
                 let scissors = [vk::Rect2D::builder().extent(surface_config.extent).build()];
                 device.cmd_set_scissor_with_count(command_buffer, &scissors);
 
-                device.cmd_draw(command_buffer, 3, 1, 0, 0);
+                device.cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &[0]);
+                device.cmd_draw(command_buffer, VERTICES_DATA.len() as u32, 1, 0, 0);
                 device.cmd_end_render_pass(command_buffer);
+
                 device
                     .end_command_buffer(command_buffer)
                     .expect("Failed to end recording command buffer");
@@ -338,23 +378,25 @@ impl RenderPipeline {
             instance,
             self.render_pass,
             self.pipeline,
+            *self.vertex_buffer,
             self.command_pool,
         );
         self.swapchain = swapchain;
         self.command_buffers = command_buffers;
     }
 
-    pub unsafe fn destroy_expendables(&self, device: &Device) {
+    pub unsafe fn destroy_expendables(&mut self, device: &Device) {
         device.free_command_buffers(self.command_pool, &self.command_buffers);
         self.swapchain.destroy_with(device);
     }
 }
 
-impl<'a> Destroy<&'a Device> for RenderPipeline {
-    unsafe fn destroy_with(&self, device: &'a Device) {
+impl<'a> Destroy<&'a mut Device> for RenderPipeline {
+    unsafe fn destroy_with(&mut self, device: &'a mut Device) {
         self.destroy_expendables(device);
         self.state.destroy_with(device);
         device.destroy_command_pool(self.command_pool, None);
+        self.vertex_buffer.destroy_with(device);
         device.destroy_pipeline(self.pipeline, None);
         device.destroy_pipeline_layout(self.layout, None);
         device.destroy_render_pass(self.render_pass, None);
@@ -399,7 +441,7 @@ impl SyncState {
 }
 
 impl<'a> Destroy<&'a Device> for SyncState {
-    unsafe fn destroy_with(&self, device: &'a Device) {
+    unsafe fn destroy_with(&mut self, device: &'a Device) {
         for i in 0..info::MAX_FRAMES_IN_FLIGHT {
             device.destroy_semaphore(self.image_available[i], None);
             device.destroy_semaphore(self.render_finished[i], None);

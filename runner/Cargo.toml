@@ -5,6 +5,9 @@ edition.workspace = true
 
 [dependencies]
 ash = { version = "0.37", features = ["linked"] }
+gpu-allocator = { version = "0.23", default-features = false, features = [
+    "vulkan",
+] }
 shared = { path = "../shared" }
 winit = "0.28"
 

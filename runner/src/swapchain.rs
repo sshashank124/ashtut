@@ -149,7 +149,7 @@ impl Swapchain {
 }
 
 impl<'a> Destroy<&'a Device> for Swapchain {
-    unsafe fn destroy_with(&self, device: &'a Device) {
+    unsafe fn destroy_with(&mut self, device: &'a Device) {
         for &framebuffer in &self.framebuffers {
             device.destroy_framebuffer(framebuffer, None);
         }
