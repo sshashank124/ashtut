@@ -30,7 +30,7 @@ impl Commands {
     pub fn record(
         &self,
         ctx: &Context,
-        render_pass: vk::RenderPass,
+        pass: vk::RenderPass,
         pipeline: vk::Pipeline,
         vertex_buffer: vk::Buffer,
         framebuffers: &[vk::Framebuffer],
@@ -41,8 +41,8 @@ impl Commands {
             },
         }];
 
-        let render_pass_info_template = vk::RenderPassBeginInfo::builder()
-            .render_pass(render_pass)
+        let pass_info_template = vk::RenderPassBeginInfo::builder()
+            .render_pass(pass)
             .render_area(
                 vk::Rect2D::builder()
                     .extent(ctx.surface.config.extent)
@@ -62,13 +62,13 @@ impl Commands {
                     .expect("Failed to begin recording command buffer");
             }
 
-            let mut render_pass_info = render_pass_info_template;
-            render_pass_info.framebuffer = framebuffer;
+            let mut pass_info = pass_info_template;
+            pass_info.framebuffer = framebuffer;
 
             unsafe {
                 ctx.device.cmd_begin_render_pass(
                     command_buffer,
-                    &render_pass_info,
+                    &pass_info,
                     vk::SubpassContents::INLINE,
                 );
 

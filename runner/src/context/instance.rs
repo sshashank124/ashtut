@@ -9,7 +9,7 @@ use winit::window::Window;
 
 use crate::util::{self, Destroy};
 
-use super::{device::Device, features::Features, queue, surface, validator::Validator};
+use super::{features::Features, queue, surface, validator::Validator};
 
 mod conf {
     pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 261);
@@ -59,20 +59,13 @@ impl Instance {
         }
     }
 
-    pub fn create_surface_on(&self, window: &Window) -> surface::Descriptor {
-        surface::Descriptor::new(self, window)
+    pub fn create_surface_on(&self, window: &Window) -> surface::Handle {
+        surface::Handle::new(self, window)
     }
 
-    pub fn request_device_for(&self, surface: surface::Descriptor) -> (Device, surface::Surface) {
-        let (physical_device, queue_families, surface_config) =
-            self.get_physical_device_and_info(&surface);
-        let device = Device::new(self, physical_device, queue_families);
-        (device, surface.with_config(surface_config))
-    }
-
-    fn get_physical_device_and_info(
+    pub fn get_physical_device_and_info(
         &self,
-        surface: &surface::Descriptor,
+        surface: &surface::Handle,
     ) -> (vk::PhysicalDevice, queue::Families, surface::Config) {
         let all_devices = unsafe {
             self.enumerate_physical_devices()

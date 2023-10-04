@@ -25,11 +25,11 @@ pub mod conf {
 }
 
 pub struct Surface {
-    inner: Descriptor,
+    handle: Handle,
     pub config: Config,
 }
 
-pub struct Descriptor {
+pub struct Handle {
     pub surface: vk::SurfaceKHR,
     pub loader: khr::Surface,
 }
@@ -48,6 +48,10 @@ pub struct ConfigurationOptions {
 }
 
 impl Surface {
+    pub const fn new(handle: Handle, config: Config) -> Self {
+        Self { handle, config }
+    }
+
     pub fn refresh_capabilities(&mut self, physical_device: vk::PhysicalDevice) -> bool {
         self.config
             .update_with(&self.get_capabilities(physical_device));
@@ -55,19 +59,11 @@ impl Surface {
     }
 }
 
-impl Descriptor {
+impl Handle {
     pub fn new(instance: &Instance, window: &Window) -> Self {
         let surface = create_surface(instance, window);
         let loader = khr::Surface::new(&instance.entry, instance);
-
         Self { surface, loader }
-    }
-
-    pub const fn with_config(self, config: Config) -> Surface {
-        Surface {
-            inner: self,
-            config,
-        }
     }
 
     pub fn get_config_options_for(
@@ -195,37 +191,37 @@ impl Config {
 
 impl Destroy<()> for Surface {
     unsafe fn destroy_with(&mut self, input: ()) {
-        self.inner.destroy_with(input);
+        self.handle.destroy_with(input);
     }
 }
 
 impl Deref for Surface {
-    type Target = Descriptor;
+    type Target = Handle;
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.handle
     }
 }
 
 impl DerefMut for Surface {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+        &mut self.handle
     }
 }
 
-impl Destroy<()> for Descriptor {
+impl Destroy<()> for Handle {
     unsafe fn destroy_with(&mut self, _: ()) {
         self.loader.destroy_surface(self.surface, None);
     }
 }
 
-impl Deref for Descriptor {
+impl Deref for Handle {
     type Target = vk::SurfaceKHR;
     fn deref(&self) -> &Self::Target {
         &self.surface
     }
 }
 
-impl DerefMut for Descriptor {
+impl DerefMut for Handle {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.surface
     }

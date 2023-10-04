@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use ash::vk;
 
-use super::{instance::Instance, surface::Descriptor};
+use super::{instance::Instance, surface::Handle};
 
 pub struct Queue {
     pub graphics: vk::Queue,
@@ -58,7 +58,7 @@ impl Families {
     pub fn find(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,
-        surface: &Descriptor,
+        surface: &Handle,
     ) -> Option<Self> {
         let queue_families =
             unsafe { instance.get_physical_device_queue_family_properties(physical_device) };

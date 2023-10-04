@@ -5,6 +5,7 @@ mod queue;
 mod surface;
 mod validator;
 
+use ash::vk;
 pub use gpu_allocator::vulkan as gpu_alloc;
 
 use winit::window::Window;
@@ -15,6 +16,7 @@ use self::{device::Device, instance::Instance, surface::Surface};
 
 pub struct Context {
     pub instance: Instance,
+    physical_device: vk::PhysicalDevice,
     pub surface: Surface,
     pub device: Device,
 }
@@ -22,19 +24,25 @@ pub struct Context {
 impl Context {
     pub fn init(window: &Window) -> Self {
         let instance = Instance::new(&window.title());
-        let surface_descriptor = instance.create_surface_on(window);
-        let (device, surface) = instance.request_device_for(surface_descriptor);
+        let surface_handle = instance.create_surface_on(window);
+
+        let (physical_device, queue_families, surface_config) =
+            instance.get_physical_device_and_info(&surface_handle);
+
+        let device = Device::new(&instance, physical_device, queue_families);
+
+        let surface = Surface::new(surface_handle, surface_config);
 
         Self {
             instance,
+            physical_device,
             surface,
             device,
         }
     }
 
     pub fn refresh_surface_capabilities(&mut self) -> bool {
-        self.surface
-            .refresh_capabilities(self.device.physical_device)
+        self.surface.refresh_capabilities(self.physical_device)
     }
 
     pub unsafe fn device_wait_idle(&self) {

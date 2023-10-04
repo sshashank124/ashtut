@@ -10,7 +10,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn create(ctx: &mut Context, render_pass: vk::RenderPass) -> Self {
+    pub fn create(ctx: &mut Context, pass: vk::RenderPass) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(**ctx.surface)
             .min_image_count(ctx.surface.config.image_count)
@@ -54,7 +54,7 @@ impl Swapchain {
         ctx.surface.config.image_count = images.len() as u32;
 
         let image_views = Self::create_image_views(ctx, &images);
-        let framebuffers = Self::create_framebuffers(ctx, render_pass, &image_views);
+        let framebuffers = Self::create_framebuffers(ctx, pass, &image_views);
 
         Self {
             swapchain,
@@ -88,7 +88,7 @@ impl Swapchain {
 
     fn create_framebuffers(
         ctx: &Context,
-        render_pass: vk::RenderPass,
+        pass: vk::RenderPass,
         image_views: &[vk::ImageView],
     ) -> Vec<vk::Framebuffer> {
         image_views
@@ -96,7 +96,7 @@ impl Swapchain {
             .map(|&image_view| {
                 let attachments = [image_view];
                 let create_info = vk::FramebufferCreateInfo::builder()
-                    .render_pass(render_pass)
+                    .render_pass(pass)
                     .attachments(&attachments)
                     .width(ctx.surface.config.extent.width)
                     .height(ctx.surface.config.extent.height)

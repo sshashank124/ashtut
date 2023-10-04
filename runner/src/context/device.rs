@@ -8,7 +8,12 @@ use ash::vk;
 
 use crate::util::Destroy;
 
-use super::{features::Features, gpu_alloc, instance::Instance, queue};
+use super::{
+    features::Features,
+    gpu_alloc,
+    instance::Instance,
+    queue::{self, Queue},
+};
 
 pub mod conf {
     pub const REQUIRED_EXTENSIONS: &[*const std::ffi::c_char] = &[
@@ -18,9 +23,8 @@ pub mod conf {
 }
 
 pub struct Device {
-    pub physical_device: vk::PhysicalDevice,
     device: ash::Device,
-    pub queue: queue::Queue,
+    pub queue: Queue,
     pub allocator: ManuallyDrop<gpu_alloc::Allocator>,
 }
 
@@ -44,7 +48,7 @@ impl Device {
         };
 
         let queue = unsafe {
-            queue::Queue {
+            Queue {
                 graphics: device.get_device_queue(families.graphics(), 0),
                 present: device.get_device_queue(families.present(), 0),
                 families,
@@ -64,7 +68,6 @@ impl Device {
             gpu_alloc::Allocator::new(&allocator_create_info).expect("Failed to create allocator");
 
         Self {
-            physical_device,
             device,
             queue,
             allocator: ManuallyDrop::new(allocator),

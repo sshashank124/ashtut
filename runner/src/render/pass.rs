@@ -4,11 +4,11 @@ use ash::vk;
 
 use crate::{context::Context, util::Destroy};
 
-pub struct RenderPass {
-    render_pass: vk::RenderPass,
+pub struct Pass {
+    pass: vk::RenderPass,
 }
 
-impl RenderPass {
+impl Pass {
     pub fn create(ctx: &Context) -> Self {
         let color_attachments = [vk::AttachmentDescription::builder()
             .format(ctx.surface.config.surface_format.format)
@@ -43,25 +43,25 @@ impl RenderPass {
             .subpasses(&subpasses)
             .dependencies(&dependencies);
 
-        let render_pass = unsafe {
+        let pass = unsafe {
             ctx.device
                 .create_render_pass(&create_info, None)
                 .expect("Failed to create render pass")
         };
 
-        Self { render_pass }
+        Self { pass }
     }
 }
 
-impl<'a> Destroy<&'a Context> for RenderPass {
+impl<'a> Destroy<&'a Context> for Pass {
     unsafe fn destroy_with(&mut self, ctx: &'a Context) {
-        ctx.device.destroy_render_pass(self.render_pass, None);
+        ctx.device.destroy_render_pass(self.pass, None);
     }
 }
 
-impl Deref for RenderPass {
+impl Deref for Pass {
     type Target = vk::RenderPass;
     fn deref(&self) -> &Self::Target {
-        &self.render_pass
+        &self.pass
     }
 }

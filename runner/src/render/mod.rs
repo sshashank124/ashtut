@@ -1,5 +1,5 @@
 mod commands;
-mod render_pass;
+mod pass;
 mod swapchain;
 mod sync_state;
 
@@ -13,9 +13,7 @@ use crate::{
     util::{Descriptors, Destroy},
 };
 
-use self::{
-    commands::Commands, render_pass::RenderPass, swapchain::Swapchain, sync_state::SyncState,
-};
+use self::{commands::Commands, pass::Pass, swapchain::Swapchain, sync_state::SyncState};
 
 mod conf {
     pub const SHADER_FILE: &str = env!("raster.spv");
@@ -33,7 +31,7 @@ mod conf {
 }
 
 pub struct Pipeline {
-    render_pass: RenderPass,
+    pass: Pass,
     layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     vertex_buffer: Buffer,
@@ -50,23 +48,23 @@ pub enum Error {
 
 impl Pipeline {
     pub fn create(ctx: &mut Context) -> Self {
-        let render_pass = RenderPass::create(ctx);
-        let (layout, pipeline) = Self::create_pipeline(ctx, *render_pass);
+        let pass = Pass::create(ctx);
+        let (layout, pipeline) = Self::create_pipeline(ctx, *pass);
         let vertex_buffer = Self::create_vertex_buffer(ctx);
         let state = SyncState::create(ctx);
 
-        let swapchain = Swapchain::create(ctx, *render_pass);
+        let swapchain = Swapchain::create(ctx, *pass);
         let commands = Commands::create(ctx);
         commands.record(
             ctx,
-            *render_pass,
+            *pass,
             pipeline,
             *vertex_buffer,
             &swapchain.framebuffers,
         );
 
         Self {
-            render_pass,
+            pass,
             layout,
             pipeline,
             vertex_buffer,
@@ -77,10 +75,7 @@ impl Pipeline {
         }
     }
 
-    fn create_pipeline(
-        ctx: &Context,
-        render_pass: vk::RenderPass,
-    ) -> (vk::PipelineLayout, vk::Pipeline) {
+    fn create_pipeline(ctx: &Context, pass: vk::RenderPass) -> (vk::PipelineLayout, vk::Pipeline) {
         let shader_module = ctx.device.create_shader_module_from_file(conf::SHADER_FILE);
 
         let shader_stages = [
@@ -153,7 +148,7 @@ impl Pipeline {
             .multisample_state(&multisample_info)
             .color_blend_state(&color_blend_info)
             .layout(layout)
-            .render_pass(render_pass)
+            .render_pass(pass)
             .dynamic_state(&dynamic_state_info)
             .build()];
 
@@ -226,10 +221,10 @@ impl Pipeline {
             self.swapchain.destroy_with(ctx);
         }
 
-        self.swapchain = Swapchain::create(ctx, *self.render_pass);
+        self.swapchain = Swapchain::create(ctx, *self.pass);
         self.commands.record(
             ctx,
-            *self.render_pass,
+            *self.pass,
             self.pipeline,
             *self.vertex_buffer,
             &self.swapchain.framebuffers,
@@ -246,6 +241,6 @@ impl<'a> Destroy<&'a mut Context> for Pipeline {
         self.vertex_buffer.destroy_with(ctx);
         ctx.device.destroy_pipeline(self.pipeline, None);
         ctx.device.destroy_pipeline_layout(self.layout, None);
-        self.render_pass.destroy_with(ctx);
+        self.pass.destroy_with(ctx);
     }
 }
