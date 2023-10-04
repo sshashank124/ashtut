@@ -1,16 +1,19 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 #![feature(offset_of)]
+#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::default_trait_access
+)]
 
 mod app;
 mod buffer;
-mod device;
-mod instance;
-mod render_pipeline;
-mod surface;
-mod swapchain;
+mod context;
+mod render;
 mod util;
-mod validator;
 mod vertex;
 
 use winit::event_loop::EventLoop;

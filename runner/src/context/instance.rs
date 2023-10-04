@@ -7,12 +7,18 @@ use std::{
 use ash::vk;
 use winit::window::Window;
 
-use crate::{
-    device::{Device, QueueFamilies},
-    surface::{Surface, SurfaceConfig, SurfaceConfigurationOptions, SurfaceDescriptor},
-    util::{self, info, Destroy},
-    validator::Validator,
-};
+use crate::util::{self, Destroy};
+
+use super::{device::Device, features::Features, queue, surface, validator::Validator};
+
+mod conf {
+    pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 261);
+    pub const REQUIRED_EXTENSIONS: &[*const std::ffi::c_char] = &[
+        ash::extensions::ext::DebugUtils::name().as_ptr(),
+        ash::extensions::khr::Surface::name().as_ptr(),
+        super::super::surface::conf::PLATFORM_EXTENSION,
+    ];
+}
 
 pub struct Instance {
     pub entry: ash::Entry,
@@ -20,25 +26,19 @@ pub struct Instance {
     validator: Validator,
 }
 
-pub struct Features {
-    pub v_1_0: Box<vk::PhysicalDeviceFeatures2>,
-    pub v_1_1: Box<vk::PhysicalDeviceVulkan11Features>,
-    pub v_1_2: Box<vk::PhysicalDeviceVulkan12Features>,
-}
-
 impl Instance {
-    pub fn new() -> Self {
+    pub fn new(app_name: &str) -> Self {
         let entry = ash::Entry::linked();
         Validator::check_validation_layer_support(&entry);
 
-        let app_name = CString::new(info::WINDOW_TITLE).unwrap();
+        let app_name = CString::new(app_name).unwrap();
         let app_info = vk::ApplicationInfo::builder()
             .application_name(&app_name)
-            .api_version(info::VK_API_VERSION);
+            .api_version(conf::VK_API_VERSION);
 
         let instance_create_info = vk::InstanceCreateInfo::builder()
             .application_info(&app_info)
-            .enabled_extension_names(info::REQUIRED_EXTENSIONS);
+            .enabled_extension_names(conf::REQUIRED_EXTENSIONS);
 
         let mut debug_info = Validator::debug_messenger_create_info();
         let instance_create_info =
@@ -59,11 +59,11 @@ impl Instance {
         }
     }
 
-    pub fn create_surface_on(&self, window: &Window) -> SurfaceDescriptor {
-        SurfaceDescriptor::new(self, window)
+    pub fn create_surface_on(&self, window: &Window) -> surface::Descriptor {
+        surface::Descriptor::new(self, window)
     }
 
-    pub fn request_device_for(&self, surface: SurfaceDescriptor) -> (Device, Surface) {
+    pub fn request_device_for(&self, surface: surface::Descriptor) -> (Device, surface::Surface) {
         let (physical_device, queue_families, surface_config) =
             self.get_physical_device_and_info(&surface);
         let device = Device::new(self, physical_device, queue_families);
@@ -72,16 +72,17 @@ impl Instance {
 
     fn get_physical_device_and_info(
         &self,
-        surface: &SurfaceDescriptor,
-    ) -> (vk::PhysicalDevice, QueueFamilies, SurfaceConfig) {
+        surface: &surface::Descriptor,
+    ) -> (vk::PhysicalDevice, queue::Families, surface::Config) {
         let all_devices = unsafe {
             self.enumerate_physical_devices()
                 .expect("Failed to enumerate physical devices")
         };
 
-        if all_devices.is_empty() {
-            panic!("Failed to find a physical device with Vulkan support");
-        }
+        assert!(
+            !all_devices.is_empty(),
+            "Failed to find a physical device with Vulkan support"
+        );
 
         let (physical_device, queue_families, surface_config_options) = all_devices
             .into_iter()
@@ -90,7 +91,7 @@ impl Instance {
                     && self.supports_required_features(physical_device)
             })
             .filter_map(|physical_device| {
-                QueueFamilies::find(self, physical_device, surface)
+                queue::Families::find(self, physical_device, surface)
                     .map(|queue_families| (physical_device, queue_families))
             })
             .map(|(physical_device, queue_families)| {
@@ -110,7 +111,7 @@ impl Instance {
         )
     }
 
-    fn is_suitable(surface_config_options: &SurfaceConfigurationOptions) -> bool {
+    fn is_suitable(surface_config_options: &surface::ConfigurationOptions) -> bool {
         surface_config_options.has_some()
     }
 
@@ -123,7 +124,7 @@ impl Instance {
                 .collect()
         };
 
-        info::REQUIRED_DEVICE_EXTENSIONS
+        super::device::conf::REQUIRED_EXTENSIONS
             .iter()
             .copied()
             .map(util::bytes_to_string)
@@ -131,14 +132,11 @@ impl Instance {
     }
 
     fn supports_required_features(&self, physical_device: vk::PhysicalDevice) -> bool {
-        let features = self.get_supported_features(physical_device);
-        features.v_1_2.vulkan_memory_model > 0
-    }
-
-    fn get_supported_features(&self, physical_device: vk::PhysicalDevice) -> Features {
-        let mut supported = Features::default();
-        unsafe { self.get_physical_device_features2(physical_device, &mut supported.v_1_0) };
-        supported
+        let mut supported_features = Features::default();
+        unsafe {
+            self.get_physical_device_features2(physical_device, &mut supported_features.v_1_0);
+        }
+        supported_features.supports_requirements()
     }
 }
 
@@ -146,23 +144,6 @@ impl Destroy<()> for Instance {
     unsafe fn destroy_with(&mut self, _: ()) {
         self.validator.destroy_with(());
         self.instance.destroy_instance(None);
-    }
-}
-
-impl Default for Features {
-    fn default() -> Self {
-        let mut v_1_1 = Box::<vk::PhysicalDeviceVulkan11Features>::default();
-        let mut v_1_2 = Box::<vk::PhysicalDeviceVulkan12Features>::default();
-        let v_1_0 = vk::PhysicalDeviceFeatures2::builder()
-            .push_next(v_1_2.as_mut())
-            .push_next(v_1_1.as_mut())
-            .build()
-            .into();
-        Self {
-            v_1_0,
-            v_1_1,
-            v_1_2,
-        }
     }
 }
 

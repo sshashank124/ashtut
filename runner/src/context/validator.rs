@@ -1,15 +1,18 @@
-use std::{
-    collections::HashSet,
-    ffi::{c_char, c_void, CStr},
-};
+use std::{collections::HashSet, ffi::c_void};
 
 use ash::vk;
 
 use crate::util::{self, Destroy};
 
-pub const VALIDATE_LAYERS: bool = cfg!(debug_assertions);
-pub const VALIDATION_LAYERS: &[*const c_char] =
-    unsafe { &[CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0").as_ptr()] };
+mod conf {
+    pub const VALIDATE_LAYERS: bool = cfg!(debug_assertions);
+    pub const VALIDATION_LAYERS: &[*const std::ffi::c_char] = unsafe {
+        &[
+            std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0")
+                .as_ptr(),
+        ]
+    };
+}
 
 pub struct Validator {
     debug_utils_loader: ash::extensions::ext::DebugUtils,
@@ -24,14 +27,14 @@ impl Validator {
     ) -> Self {
         let debug_utils_loader = ash::extensions::ext::DebugUtils::new(entry, instance);
 
-        let debug_messenger = if !VALIDATE_LAYERS {
-            vk::DebugUtilsMessengerEXT::null()
-        } else {
+        let debug_messenger = if conf::VALIDATE_LAYERS {
             unsafe {
                 debug_utils_loader
                     .create_debug_utils_messenger(&debug_info, None)
                     .expect("Failed to create debug utils messenger")
             }
+        } else {
+            vk::DebugUtilsMessengerEXT::null()
         };
 
         Self {
@@ -41,7 +44,7 @@ impl Validator {
     }
 
     pub fn check_validation_layer_support(entry: &ash::Entry) {
-        if !VALIDATE_LAYERS {
+        if !conf::VALIDATE_LAYERS {
             return;
         }
 
@@ -52,11 +55,12 @@ impl Validator {
             .map(|l| util::bytes_to_string(l.layer_name.as_ptr()))
             .collect::<HashSet<_>>();
 
-        for &req_layer in VALIDATION_LAYERS {
+        for &req_layer in conf::VALIDATION_LAYERS {
             let req_layer = util::bytes_to_string(req_layer);
-            if !available_layers.contains(&req_layer) {
-                panic!("Layer {req_layer} not found");
-            }
+            assert!(
+                available_layers.contains(&req_layer),
+                "Layer {req_layer} not found"
+            );
         }
     }
 
@@ -64,11 +68,11 @@ impl Validator {
         instance_create_info: vk::InstanceCreateInfoBuilder<'a>,
         debug_info: &'a mut vk::DebugUtilsMessengerCreateInfoEXT,
     ) -> vk::InstanceCreateInfoBuilder<'a> {
-        if !VALIDATE_LAYERS {
+        if !conf::VALIDATE_LAYERS {
             return instance_create_info;
         }
         instance_create_info
-            .enabled_layer_names(VALIDATION_LAYERS)
+            .enabled_layer_names(conf::VALIDATION_LAYERS)
             .push_next(debug_info)
     }
 
@@ -90,7 +94,7 @@ impl Validator {
 
 impl Destroy<()> for Validator {
     unsafe fn destroy_with(&mut self, _: ()) {
-        if VALIDATE_LAYERS {
+        if conf::VALIDATE_LAYERS {
             self.debug_utils_loader
                 .destroy_debug_utils_messenger(self.debug_messenger, None);
         }
@@ -103,9 +107,7 @@ unsafe extern "system" fn debug_callback(
     p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
     _p_user_data: *mut c_void,
 ) -> vk::Bool32 {
-    let severity = format!("{:?}", message_severity);
-    let types = format!("{:?}", message_type);
     let message = util::bytes_to_string((*p_callback_data).p_message);
-    println!("[{}][{}] {}", severity, types, message);
+    println!("[{message_severity:?}][{message_type:?}] {message}");
     vk::FALSE
 }

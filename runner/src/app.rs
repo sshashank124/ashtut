@@ -6,19 +6,15 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::{
-    device::Device,
-    instance::Instance,
-    render_pipeline::{RenderError, RenderPipeline},
-    surface::Surface,
-    util::{info, Destroy},
-};
+use crate::{context::Context, render, util::Destroy};
+
+mod conf {
+    pub const WINDOW_TITLE: &str = "Learning Vulkan & Ash";
+}
 
 pub struct App {
-    instance: Instance,
-    surface: Surface,
-    device: Device,
-    render_pipeline: RenderPipeline,
+    ctx: Context,
+    render_pipeline: render::Pipeline,
 
     resized: bool,
     last_frame: Instant,
@@ -26,15 +22,11 @@ pub struct App {
 
 impl App {
     pub fn new(window: &Window) -> Self {
-        let instance = Instance::new();
-        let surface_descriptor = instance.create_surface_on(window);
-        let (mut device, mut surface) = instance.request_device_for(surface_descriptor);
-        let render_pipeline = RenderPipeline::create(&mut device, &mut surface, &instance);
+        let mut ctx = Context::init(window);
+        let render_pipeline = render::Pipeline::create(&mut ctx);
 
         Self {
-            instance,
-            surface,
-            device,
+            ctx,
             render_pipeline,
 
             resized: false,
@@ -47,31 +39,30 @@ impl App {
             self.recreate();
         }
 
-        if let Err(RenderError::NeedsRecreating) = self.render_pipeline.render(&self.device) {
+        if matches!(
+            self.render_pipeline.render(&self.ctx),
+            Err(render::Error::NeedsRecreating)
+        ) {
             self.resized = true;
         }
 
         let now = Instant::now();
         let fps = (now - self.last_frame).as_secs_f32().recip() as u32;
-        print!("FPS: {:6?}\r", fps);
+        print!("FPS: {fps:6?}\r");
         self.last_frame = now;
     }
 
     fn recreate(&mut self) {
-        unsafe { self.device.wait_until_idle() };
-        self.surface
-            .refresh_capabilities(self.device.physical_device);
-        if !self.surface.config.invalid_extent() {
-            self.render_pipeline
-                .recreate(&self.device, &mut self.surface, &self.instance);
+        unsafe { self.ctx.device_wait_idle() };
+        if self.ctx.refresh_surface_capabilities() {
+            self.render_pipeline.recreate(&mut self.ctx);
         }
         self.resized = false;
     }
 
     pub fn init_window(event_loop: &EventLoop<()>) -> Window {
         WindowBuilder::new()
-            .with_title(info::WINDOW_TITLE)
-            // .with_fullscreen(Some(winit::window::Fullscreen::Borderless(None)))
+            .with_title(conf::WINDOW_TITLE)
             .build(event_loop)
             .expect("Failed to create a window")
     }
@@ -104,12 +95,9 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         unsafe {
-            self.device.wait_until_idle();
-
-            self.render_pipeline.destroy_with(&mut self.device);
-            self.device.destroy_with(());
-            self.surface.destroy_with(());
-            self.instance.destroy_with(());
+            self.ctx.device_wait_idle();
+            self.render_pipeline.destroy_with(&mut self.ctx);
+            self.ctx.destroy_with(());
         }
     }
 }

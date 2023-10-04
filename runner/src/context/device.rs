@@ -1,51 +1,40 @@
 use std::{
-    collections::HashSet,
+    fs::File,
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
 };
 
 use ash::vk;
-pub use gpu_allocator::vulkan as gpu_alloc;
 
-use crate::{
-    instance::{Features, Instance},
-    surface::SurfaceDescriptor,
-    util::{info, Destroy},
-};
+use crate::util::Destroy;
+
+use super::{features::Features, gpu_alloc, instance::Instance, queue};
+
+pub mod conf {
+    pub const REQUIRED_EXTENSIONS: &[*const std::ffi::c_char] = &[
+        ash::extensions::khr::Swapchain::name().as_ptr(),
+        ash::vk::KhrVulkanMemoryModelFn::name().as_ptr(),
+    ];
+}
 
 pub struct Device {
     pub physical_device: vk::PhysicalDevice,
     device: ash::Device,
-    pub queue: Queue,
+    pub queue: queue::Queue,
     pub allocator: ManuallyDrop<gpu_alloc::Allocator>,
-}
-
-pub struct Queue {
-    pub graphics: vk::Queue,
-    pub present: vk::Queue,
-    pub families: QueueFamilies,
-}
-pub struct QueueFamilies {
-    indices: [u32; 2],
-}
-
-#[derive(Default)]
-struct QueueFamiliesInfo {
-    graphics: Option<u32>,
-    present: Option<u32>,
 }
 
 impl Device {
     pub fn new(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,
-        families: QueueFamilies,
+        families: queue::Families,
     ) -> Self {
-        let mut required_features: Features = info::required_features();
-        let queue_create_infos = Queue::create_infos(&families);
+        let mut required_features = Features::required();
+        let queue_create_infos = queue::Queue::create_infos(&families);
         let create_info = vk::DeviceCreateInfo::builder()
             .queue_create_infos(&queue_create_infos)
-            .enabled_extension_names(info::REQUIRED_DEVICE_EXTENSIONS)
+            .enabled_extension_names(conf::REQUIRED_EXTENSIONS)
             .push_next(required_features.v_1_0.as_mut());
 
         let device = unsafe {
@@ -55,7 +44,7 @@ impl Device {
         };
 
         let queue = unsafe {
-            Queue {
+            queue::Queue {
                 graphics: device.get_device_queue(families.graphics(), 0),
                 present: device.get_device_queue(families.present(), 0),
                 families,
@@ -115,89 +104,16 @@ impl Device {
         }
     }
 
-    pub unsafe fn wait_until_idle(&self) {
-        self.device_wait_idle()
-            .expect("Failed to wait for device to idle");
-    }
-}
-
-impl Queue {
-    pub fn create_infos(indices: &QueueFamilies) -> Vec<vk::DeviceQueueCreateInfo> {
-        indices
-            .unique_queue_family_indices()
-            .iter()
-            .map(|&index| {
-                vk::DeviceQueueCreateInfo::builder()
-                    .queue_family_index(index)
-                    .queue_priorities(&[1.0_f32])
-                    .build()
-            })
-            .collect::<Vec<_>>()
-    }
-}
-
-impl QueueFamilies {
-    pub fn graphics(&self) -> u32 {
-        self.indices[0]
-    }
-    pub fn present(&self) -> u32 {
-        self.indices[1]
-    }
-    pub fn separate_graphics_and_presentation_indices(&self) -> Option<&[u32]> {
-        if self.graphics() == self.present() {
-            None
-        } else {
-            Some(&self.indices[..2])
+    pub fn create_shader_module_from_file(&self, filepath: &str) -> vk::ShaderModule {
+        let shader_code = {
+            let mut file = File::open(filepath).expect("Unable to open shader file");
+            ash::util::read_spv(&mut file).expect("Unable to parse shader file")
+        };
+        let create_info = vk::ShaderModuleCreateInfo::builder().code(&shader_code);
+        unsafe {
+            self.create_shader_module(&create_info, None)
+                .expect("Failed to create shader module")
         }
-    }
-    pub fn unique_queue_family_indices(&self) -> HashSet<u32> {
-        HashSet::from_iter(self.indices)
-    }
-
-    pub fn find(
-        instance: &Instance,
-        physical_device: vk::PhysicalDevice,
-        surface: &SurfaceDescriptor,
-    ) -> Option<Self> {
-        let queue_families =
-            unsafe { instance.get_physical_device_queue_family_properties(physical_device) };
-
-        let valid_queue_families = queue_families
-            .into_iter()
-            .enumerate()
-            .filter(|(_, queue_family)| queue_family.queue_count > 0);
-
-        let mut found_indices = QueueFamiliesInfo::default();
-        for (index, queue_family) in valid_queue_families {
-            if queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
-                found_indices.graphics = Some(index as u32);
-            }
-
-            if surface.is_supported_by(physical_device, index as u32) {
-                found_indices.present = Some(index as u32);
-            }
-
-            if found_indices.is_complete() {
-                break;
-            }
-        }
-
-        Self::try_from(found_indices).ok()
-    }
-}
-
-impl TryFrom<QueueFamiliesInfo> for QueueFamilies {
-    type Error = ();
-    fn try_from(value: QueueFamiliesInfo) -> Result<Self, Self::Error> {
-        Ok(Self {
-            indices: [value.graphics.ok_or(())?, value.present.ok_or(())?],
-        })
-    }
-}
-
-impl QueueFamiliesInfo {
-    pub fn is_complete(&self) -> bool {
-        self.graphics.is_some() && self.present.is_some()
     }
 }
 

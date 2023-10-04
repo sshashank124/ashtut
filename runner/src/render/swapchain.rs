@@ -1,6 +1,6 @@
 use ash::{extensions::khr, vk};
 
-use crate::{device::Device, instance::Instance, surface::Surface, util::Destroy};
+use crate::{context::Context, util::Destroy};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -10,26 +10,22 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn create(
-        device: &Device,
-        surface: &mut Surface,
-        render_pass: vk::RenderPass,
-        instance: &Instance,
-    ) -> Self {
+    pub fn create(ctx: &mut Context, render_pass: vk::RenderPass) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::builder()
-            .surface(***surface)
-            .min_image_count(surface.config.image_count)
-            .image_format(surface.config.surface_format.format)
-            .image_color_space(surface.config.surface_format.color_space)
-            .image_extent(surface.config.extent)
+            .surface(**ctx.surface)
+            .min_image_count(ctx.surface.config.image_count)
+            .image_format(ctx.surface.config.surface_format.format)
+            .image_color_space(ctx.surface.config.surface_format.color_space)
+            .image_extent(ctx.surface.config.extent)
             .image_array_layers(1)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
             .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(surface.config.present_mode)
+            .present_mode(ctx.surface.config.present_mode)
             .clipped(true);
 
-        let create_info = if let Some(different_indices) = device
+        let create_info = if let Some(different_indices) = ctx
+            .device
             .queue
             .families
             .separate_graphics_and_presentation_indices()
@@ -41,7 +37,7 @@ impl Swapchain {
             create_info.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
         };
 
-        let loader = khr::Swapchain::new(instance, device);
+        let loader = khr::Swapchain::new(&ctx.instance, &ctx.device);
 
         let swapchain = unsafe {
             loader
@@ -55,12 +51,10 @@ impl Swapchain {
                 .expect("Failed to get swapchain images")
         };
 
-        surface.config.image_count = images.len() as u32;
+        ctx.surface.config.image_count = images.len() as u32;
 
-        let image_views =
-            Self::create_image_views(device, surface.config.surface_format.format, &images);
-        let framebuffers =
-            Self::create_framebuffers(device, render_pass, surface.config.extent, &image_views);
+        let image_views = Self::create_image_views(ctx, &images);
+        let framebuffers = Self::create_framebuffers(ctx, render_pass, &image_views);
 
         Self {
             swapchain,
@@ -70,11 +64,7 @@ impl Swapchain {
         }
     }
 
-    fn create_image_views(
-        device: &Device,
-        format: vk::Format,
-        images: &[vk::Image],
-    ) -> Vec<vk::ImageView> {
+    fn create_image_views(ctx: &Context, images: &[vk::Image]) -> Vec<vk::ImageView> {
         images
             .iter()
             .map(|&image| {
@@ -85,10 +75,10 @@ impl Swapchain {
                 let create_info = vk::ImageViewCreateInfo::builder()
                     .image(image)
                     .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(format)
+                    .format(ctx.surface.config.surface_format.format)
                     .subresource_range(*subresource_range);
                 unsafe {
-                    device
+                    ctx.device
                         .create_image_view(&create_info, None)
                         .expect("Failed to create image view")
                 }
@@ -97,9 +87,8 @@ impl Swapchain {
     }
 
     fn create_framebuffers(
-        device: &Device,
+        ctx: &Context,
         render_pass: vk::RenderPass,
-        extent: vk::Extent2D,
         image_views: &[vk::ImageView],
     ) -> Vec<vk::Framebuffer> {
         image_views
@@ -109,11 +98,11 @@ impl Swapchain {
                 let create_info = vk::FramebufferCreateInfo::builder()
                     .render_pass(render_pass)
                     .attachments(&attachments)
-                    .width(extent.width)
-                    .height(extent.height)
+                    .width(ctx.surface.config.extent.width)
+                    .height(ctx.surface.config.extent.height)
                     .layers(1);
                 unsafe {
-                    device
+                    ctx.device
                         .create_framebuffer(&create_info, None)
                         .expect("Failed to create framebuffer")
                 }
@@ -121,16 +110,18 @@ impl Swapchain {
             .collect()
     }
 
-    pub unsafe fn acquire_next_image(&self, signal_to: vk::Semaphore) -> (u32, bool) {
-        self.loader
-            .acquire_next_image(self.swapchain, u64::MAX, signal_to, vk::Fence::null())
-            .unwrap_or((0, true))
+    pub fn acquire_next_image_and_signal(&self, signal_to: vk::Semaphore) -> (u32, bool) {
+        unsafe {
+            self.loader
+                .acquire_next_image(self.swapchain, u64::MAX, signal_to, vk::Fence::null())
+                .unwrap_or((0, true))
+        }
     }
 
     // Returns true if the swapchain needs recreating
-    pub unsafe fn present_to_when(
+    pub fn present_to_when(
         &self,
-        device: &Device,
+        ctx: &Context,
         image_index: u32,
         wait_on: &[vk::Semaphore],
     ) -> bool {
@@ -142,19 +133,21 @@ impl Swapchain {
             .swapchains(&swapchains)
             .image_indices(&image_indices);
 
-        self.loader
-            .queue_present(device.queue.present, &present_info)
-            .unwrap_or(true)
+        unsafe {
+            self.loader
+                .queue_present(ctx.device.queue.present, &present_info)
+                .unwrap_or(true)
+        }
     }
 }
 
-impl<'a> Destroy<&'a Device> for Swapchain {
-    unsafe fn destroy_with(&mut self, device: &'a Device) {
+impl<'a> Destroy<&'a Context> for Swapchain {
+    unsafe fn destroy_with(&mut self, ctx: &'a Context) {
         for &framebuffer in &self.framebuffers {
-            device.destroy_framebuffer(framebuffer, None);
+            ctx.device.destroy_framebuffer(framebuffer, None);
         }
         for &image_view in &self.image_views {
-            device.destroy_image_view(image_view, None);
+            ctx.device.destroy_image_view(image_view, None);
         }
         self.loader.destroy_swapchain(self.swapchain, None);
     }

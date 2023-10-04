@@ -1,52 +1,69 @@
-use std::ops::{Deref, DerefMut};
-
-use ash::vk;
-use winit::window::Window;
-
-use crate::{
-    instance::Instance,
-    util::{self, info, Destroy},
+use std::{
+    ffi::c_void,
+    ops::{Deref, DerefMut},
 };
 
+use ash::{extensions::khr, vk};
+use winit::{platform::windows::WindowExtWindows, window::Window};
+
+use crate::util::Destroy;
+
+use super::instance::Instance;
+
+pub mod conf {
+    use ash::vk;
+
+    pub const PLATFORM_EXTENSION: *const std::ffi::c_char =
+        ash::extensions::khr::Win32Surface::name().as_ptr();
+
+    pub const PREFERRED_SURFACE_FORMAT: vk::SurfaceFormatKHR = vk::SurfaceFormatKHR {
+        format: vk::Format::B8G8R8A8_SRGB,
+        color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
+    };
+    pub const PREFERRED_PRESENT_MODE: vk::PresentModeKHR = vk::PresentModeKHR::MAILBOX;
+    pub const FALLBACK_PRESENT_MODE: vk::PresentModeKHR = vk::PresentModeKHR::FIFO;
+}
+
 pub struct Surface {
-    inner: SurfaceDescriptor,
-    pub config: SurfaceConfig,
+    inner: Descriptor,
+    pub config: Config,
 }
 
-pub struct SurfaceDescriptor {
+pub struct Descriptor {
     pub surface: vk::SurfaceKHR,
-    pub loader: ash::extensions::khr::Surface,
+    pub loader: khr::Surface,
 }
 
-pub struct SurfaceConfig {
+pub struct Config {
     pub surface_format: vk::SurfaceFormatKHR,
     pub present_mode: vk::PresentModeKHR,
     pub extent: vk::Extent2D,
     pub image_count: u32,
 }
 
-pub struct SurfaceConfigurationOptions {
+pub struct ConfigurationOptions {
     capabilities: vk::SurfaceCapabilitiesKHR,
     surface_formats: Vec<vk::SurfaceFormatKHR>,
     present_modes: Vec<vk::PresentModeKHR>,
 }
 
 impl Surface {
-    pub fn refresh_capabilities(&mut self, physical_device: vk::PhysicalDevice) {
+    pub fn refresh_capabilities(&mut self, physical_device: vk::PhysicalDevice) -> bool {
         self.config
             .update_with(&self.get_capabilities(physical_device));
+        self.config.valid_extent()
     }
 }
 
-impl SurfaceDescriptor {
+impl Descriptor {
     pub fn new(instance: &Instance, window: &Window) -> Self {
-        let surface = util::platform::create_surface(instance, window);
-        let loader = ash::extensions::khr::Surface::new(&instance.entry, instance);
+        let surface = create_surface(instance, window);
+        let loader = khr::Surface::new(&instance.entry, instance);
 
         Self { surface, loader }
     }
 
-    pub fn with_config(self, config: SurfaceConfig) -> Surface {
+    pub const fn with_config(self, config: Config) -> Surface {
         Surface {
             inner: self,
             config,
@@ -56,7 +73,7 @@ impl SurfaceDescriptor {
     pub fn get_config_options_for(
         &self,
         physical_device: vk::PhysicalDevice,
-    ) -> SurfaceConfigurationOptions {
+    ) -> ConfigurationOptions {
         let capabilities = self.get_capabilities(physical_device);
         let surface_formats = unsafe {
             self.loader
@@ -69,7 +86,7 @@ impl SurfaceDescriptor {
                 .expect("Failed to get surface present modes")
         };
 
-        SurfaceConfigurationOptions {
+        ConfigurationOptions {
             capabilities,
             surface_formats,
             present_modes,
@@ -104,18 +121,18 @@ impl SurfaceDescriptor {
     }
 }
 
-impl SurfaceConfigurationOptions {
+impl ConfigurationOptions {
     pub fn has_some(&self) -> bool {
         !self.surface_formats.is_empty() && !self.present_modes.is_empty()
     }
 
-    pub fn get_optimal(&self) -> SurfaceConfig {
+    pub fn get_optimal(&self) -> Config {
         let surface_format = Self::choose_best_surface_format(&self.surface_formats);
         let extent = Self::choose_extent(&self.capabilities);
         let image_count = Self::choose_image_count(&self.capabilities);
         let present_mode = Self::choose_best_present_mode(&self.present_modes);
 
-        SurfaceConfig {
+        Config {
             surface_format,
             present_mode,
             extent,
@@ -127,7 +144,7 @@ impl SurfaceConfigurationOptions {
         formats
             .iter()
             .copied()
-            .find(|&format| format == info::PREFERRED_SURFACE_FORMAT)
+            .find(|&format| format == conf::PREFERRED_SURFACE_FORMAT)
             .unwrap_or_else(|| formats[0])
     }
 
@@ -135,8 +152,8 @@ impl SurfaceConfigurationOptions {
         present_modes
             .iter()
             .copied()
-            .find(|&format| format == info::PREFERRED_PRESENT_MODE)
-            .unwrap_or(info::FALLBACK_PRESENT_MODE)
+            .find(|&format| format == conf::PREFERRED_PRESENT_MODE)
+            .unwrap_or(conf::FALLBACK_PRESENT_MODE)
     }
 
     pub fn choose_extent(capabilities: &vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
@@ -145,16 +162,14 @@ impl SurfaceConfigurationOptions {
         }
 
         vk::Extent2D {
-            width: capabilities
-                .current_extent
-                .width
-                .max(capabilities.min_image_extent.width)
-                .min(capabilities.max_image_extent.width),
-            height: capabilities
-                .current_extent
-                .height
-                .max(capabilities.min_image_extent.height)
-                .min(capabilities.max_image_extent.height),
+            width: capabilities.current_extent.width.clamp(
+                capabilities.min_image_extent.width,
+                capabilities.max_image_extent.width,
+            ),
+            height: capabilities.current_extent.height.clamp(
+                capabilities.min_image_extent.height,
+                capabilities.max_image_extent.height,
+            ),
         }
     }
 
@@ -168,24 +183,24 @@ impl SurfaceConfigurationOptions {
     }
 }
 
-impl SurfaceConfig {
+impl Config {
     pub fn update_with(&mut self, surface_capabilities: &vk::SurfaceCapabilitiesKHR) {
-        self.extent = SurfaceConfigurationOptions::choose_extent(surface_capabilities);
+        self.extent = ConfigurationOptions::choose_extent(surface_capabilities);
     }
 
-    pub fn invalid_extent(&self) -> bool {
-        self.extent.width == 0 || self.extent.height == 0
+    pub const fn valid_extent(&self) -> bool {
+        self.extent.width != 0 && self.extent.height != 0
     }
 }
 
 impl Destroy<()> for Surface {
     unsafe fn destroy_with(&mut self, input: ()) {
-        self.inner.destroy_with(input)
+        self.inner.destroy_with(input);
     }
 }
 
 impl Deref for Surface {
-    type Target = SurfaceDescriptor;
+    type Target = Descriptor;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
@@ -197,21 +212,32 @@ impl DerefMut for Surface {
     }
 }
 
-impl Destroy<()> for SurfaceDescriptor {
+impl Destroy<()> for Descriptor {
     unsafe fn destroy_with(&mut self, _: ()) {
         self.loader.destroy_surface(self.surface, None);
     }
 }
 
-impl Deref for SurfaceDescriptor {
+impl Deref for Descriptor {
     type Target = vk::SurfaceKHR;
     fn deref(&self) -> &Self::Target {
         &self.surface
     }
 }
 
-impl DerefMut for SurfaceDescriptor {
+impl DerefMut for Descriptor {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.surface
+    }
+}
+
+fn create_surface(instance: &Instance, window: &Window) -> vk::SurfaceKHR {
+    let create_info = vk::Win32SurfaceCreateInfoKHR::builder()
+        .hinstance(window.hinstance() as *const c_void)
+        .hwnd(window.hwnd() as *const c_void);
+    unsafe {
+        khr::Win32Surface::new(&instance.entry, instance)
+            .create_win32_surface(&create_info, None)
+            .expect("Failed to create Windows surface")
     }
 }
