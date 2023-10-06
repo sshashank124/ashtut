@@ -71,7 +71,7 @@ impl Descriptors {
     }
 
     pub fn add_uniforms(&self, ctx: &Context, uniforms: &Uniforms) {
-        for (&set, uniform_buffer) in self.sets.iter().zip(&uniforms.buffers) {
+        for (&set, uniform_buffer) in itertools::izip!(&self.sets, &uniforms.buffers) {
             let buffer_infos = [vk::DescriptorBufferInfo::builder()
                 .buffer(**uniform_buffer)
                 .range(vk::WHOLE_SIZE)
