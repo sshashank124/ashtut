@@ -1,21 +1,17 @@
 use ash::vk;
 
-use crate::{
-    context::Context,
-    util::{self, Destroy},
-};
+use crate::{buffer::Buffer, context::Context, util};
 
-pub struct Commands {
-    pool: vk::CommandPool,
+use super::{pass::Pass, pipeline::Pipeline};
+
+pub struct DrawCommands {
     pub buffers: Vec<vk::CommandBuffer>,
 }
 
-impl Commands {
+impl DrawCommands {
     pub fn create(ctx: &Context) -> Self {
-        let pool = ctx.device.create_command_pool();
-
         let allocate_info = vk::CommandBufferAllocateInfo::builder()
-            .command_pool(pool)
+            .command_pool(ctx.device.queues.graphics_pool())
             .command_buffer_count(ctx.surface.config.image_count);
 
         let buffers = unsafe {
@@ -24,15 +20,16 @@ impl Commands {
                 .expect("Failed to allocate command buffers")
         };
 
-        Self { pool, buffers }
+        Self { buffers }
     }
 
     pub fn record(
         &self,
         ctx: &Context,
-        pass: vk::RenderPass,
-        pipeline: vk::Pipeline,
-        vertex_buffer: vk::Buffer,
+        pass: &Pass,
+        pipeline: &Pipeline,
+        vertex_index_buffer: &Buffer,
+        descriptor_sets: &[vk::DescriptorSet],
         framebuffers: &[vk::Framebuffer],
     ) {
         let clear_values = [vk::ClearValue {
@@ -42,7 +39,7 @@ impl Commands {
         }];
 
         let pass_info_template = vk::RenderPassBeginInfo::builder()
-            .render_pass(pass)
+            .render_pass(**pass)
             .render_area(
                 vk::Rect2D::builder()
                     .extent(ctx.surface.config.extent)
@@ -51,9 +48,9 @@ impl Commands {
             .clear_values(&clear_values)
             .build();
 
-        let vertex_buffers = [vertex_buffer];
-
-        for (&command_buffer, &framebuffer) in self.buffers.iter().zip(framebuffers) {
+        for (&command_buffer, &descriptor_set, &framebuffer) in
+            itertools::izip!(&self.buffers, descriptor_sets, framebuffers)
+        {
             let command_buffer_info = vk::CommandBufferBeginInfo::builder();
 
             unsafe {
@@ -65,6 +62,16 @@ impl Commands {
             let mut pass_info = pass_info_template;
             pass_info.framebuffer = framebuffer;
 
+            let viewports = [vk::Viewport::builder()
+                .width(ctx.surface.config.extent.width as f32)
+                .height(ctx.surface.config.extent.height as f32)
+                .max_depth(1.0)
+                .build()];
+
+            let scissors = [vk::Rect2D::builder()
+                .extent(ctx.surface.config.extent)
+                .build()];
+
             unsafe {
                 ctx.device.cmd_begin_render_pass(
                     command_buffer,
@@ -75,32 +82,45 @@ impl Commands {
                 ctx.device.cmd_bind_pipeline(
                     command_buffer,
                     vk::PipelineBindPoint::GRAPHICS,
-                    pipeline,
+                    **pipeline,
                 );
 
-                let viewports = [vk::Viewport::builder()
-                    .width(ctx.surface.config.extent.width as f32)
-                    .height(ctx.surface.config.extent.height as f32)
-                    .max_depth(1.0)
-                    .build()];
                 ctx.device
                     .cmd_set_viewport_with_count(command_buffer, &viewports);
 
-                let scissors = [vk::Rect2D::builder()
-                    .extent(ctx.surface.config.extent)
-                    .build()];
                 ctx.device
                     .cmd_set_scissor_with_count(command_buffer, &scissors);
 
+                let vertex_buffers = [**vertex_index_buffer];
                 ctx.device
                     .cmd_bind_vertex_buffers(command_buffer, 0, &vertex_buffers, &[0]);
-                ctx.device.cmd_draw(
+
+                ctx.device.cmd_bind_index_buffer(
                     command_buffer,
-                    super::conf::VERTICES_DATA.len() as u32,
+                    **vertex_index_buffer,
+                    super::data::indices_offset(),
+                    vk::IndexType::UINT16,
+                );
+
+                let descriptor_sets = [descriptor_set];
+                ctx.device.cmd_bind_descriptor_sets(
+                    command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    pipeline.layout,
+                    0,
+                    &descriptor_sets,
+                    &[],
+                );
+
+                ctx.device.cmd_draw_indexed(
+                    command_buffer,
+                    super::data::INDICES_DATA.len() as u32,
                     1,
                     0,
                     0,
+                    0,
                 );
+
                 ctx.device.cmd_end_render_pass(command_buffer);
 
                 ctx.device
@@ -127,22 +147,8 @@ impl Commands {
 
         unsafe {
             ctx.device
-                .queue_submit(ctx.device.queue.graphics, &submit_infos, fence)
+                .queue_submit(*ctx.device.queues.graphics, &submit_infos, fence)
                 .expect("Failed to submit commands through the `graphics` queue");
         }
-    }
-
-    pub fn reset(&mut self, ctx: &mut Context) {
-        unsafe {
-            ctx.device
-                .reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty())
-                .expect("Failed to reset command pool");
-        }
-    }
-}
-
-impl<'a> Destroy<&'a mut Context> for Commands {
-    unsafe fn destroy_with(&mut self, ctx: &'a mut Context) {
-        ctx.device.destroy_command_pool(self.pool, None);
     }
 }

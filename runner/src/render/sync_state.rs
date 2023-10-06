@@ -13,7 +13,7 @@ pub struct SyncState {
     image_available: Vec<vk::Semaphore>,
     render_finished: Vec<vk::Semaphore>,
     in_flight: Vec<vk::Fence>,
-    current_frame: usize,
+    pub current_frame: usize,
 }
 
 impl SyncState {

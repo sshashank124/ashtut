@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-pub trait Descriptors {
+pub trait Descriptions {
     type BindingType;
     const NUM_BINDINGS: usize;
     fn bindings_description() -> [Self::BindingType; Self::NUM_BINDINGS];
@@ -23,4 +23,11 @@ pub fn bytes_to_string(string: *const std::ffi::c_char) -> String {
 
 pub const fn solo_range(i: usize) -> RangeInclusive<usize> {
     i..=i
+}
+
+pub fn total_size<T>(slices: &[&[T]]) -> usize {
+    slices
+        .iter()
+        .map(|&slice| std::mem::size_of_val(slice))
+        .sum()
 }

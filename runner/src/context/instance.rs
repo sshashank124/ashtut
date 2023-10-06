@@ -13,8 +13,10 @@ use super::{features::Features, queue, surface, validator::Validator};
 
 mod conf {
     pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 261);
-    pub const REQUIRED_EXTENSIONS: &[*const std::ffi::c_char] = &[
+    pub const ENABLED_EXTENSIONS: &[*const std::ffi::c_char] = &[
+        // Debug
         ash::extensions::ext::DebugUtils::name().as_ptr(),
+        // Surface
         ash::extensions::khr::Surface::name().as_ptr(),
         super::super::surface::conf::PLATFORM_EXTENSION,
     ];
@@ -38,7 +40,7 @@ impl Instance {
 
         let instance_create_info = vk::InstanceCreateInfo::builder()
             .application_info(&app_info)
-            .enabled_extension_names(conf::REQUIRED_EXTENSIONS);
+            .enabled_extension_names(conf::ENABLED_EXTENSIONS);
 
         let mut debug_info = Validator::debug_messenger_create_info();
         let instance_create_info =
@@ -81,7 +83,7 @@ impl Instance {
             .into_iter()
             .filter(|&physical_device| {
                 self.has_required_device_extensions(physical_device)
-                    && self.supports_required_features(physical_device)
+                    && Features::get_supported(self, physical_device).supports_requirements()
             })
             .filter_map(|physical_device| {
                 queue::Families::find(self, physical_device, surface)
@@ -122,14 +124,6 @@ impl Instance {
             .copied()
             .map(util::bytes_to_string)
             .all(|ref required_extension| available_extensions.contains(required_extension))
-    }
-
-    fn supports_required_features(&self, physical_device: vk::PhysicalDevice) -> bool {
-        let mut supported_features = Features::default();
-        unsafe {
-            self.get_physical_device_features2(physical_device, &mut supported_features.v_1_0);
-        }
-        supported_features.supports_requirements()
     }
 }
 

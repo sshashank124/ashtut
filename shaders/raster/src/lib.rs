@@ -1,17 +1,19 @@
 #![cfg_attr(target_arch = "spirv", no_std)]
 
-use shared::{
-    spirv_std::{glam::Vec4, spirv},
-    Vertex,
-};
+use shared::{glam::Vec4, spirv_std::spirv, UniformObjects, Vertex};
 
 #[spirv(vertex)]
 pub fn vert_main(
     vertex: Vertex,
+    #[spirv(uniform, descriptor_set = 0, binding = 0)] uniforms: &UniformObjects,
     #[spirv(position, invariant)] position: &mut Vec4,
     color: &mut Vec4,
 ) {
-    *position = vertex.position.extend(0.0).extend(1.0);
+    let transforms = uniforms.transforms;
+    *position = transforms.proj
+        * transforms.view
+        * transforms.model
+        * vertex.position.extend(0.0).extend(1.0);
     *color = vertex.color.extend(1.0);
 }
 

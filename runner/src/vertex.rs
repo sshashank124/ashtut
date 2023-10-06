@@ -2,11 +2,11 @@ use std::mem;
 
 use ash::vk;
 
-use shared::Vertex;
+use shared::{bytemuck, Vertex};
 
-use crate::util::Descriptors;
+use crate::util::Descriptions;
 
-impl Descriptors for Vertex {
+impl Descriptions for Vertex {
     type BindingType = vk::VertexInputBindingDescription;
     const NUM_BINDINGS: usize = 1;
 
@@ -27,13 +27,13 @@ impl Descriptors for Vertex {
                 binding: 0,
                 location: 0,
                 format: vk::Format::R32G32_SFLOAT,
-                offset: mem::offset_of!(Self, position) as u32,
+                offset: bytemuck::offset_of!(Self, position) as u32,
             },
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 1,
                 format: vk::Format::R32G32B32_SFLOAT,
-                offset: mem::offset_of!(Self, color) as u32,
+                offset: bytemuck::offset_of!(Self, color) as u32,
             },
         ]
     }

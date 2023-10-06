@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use shared::{glam, UniformObjects};
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::EventLoop,
@@ -14,36 +15,71 @@ mod conf {
 
 pub struct App {
     ctx: Context,
-    render_pipeline: render::Pipeline,
+    render_pipeline: render::Renderer,
 
-    resized: bool,
+    // state
+    uniforms: UniformObjects,
+    needs_resizing: bool,
+    start_time: Instant,
     last_frame: Instant,
 }
 
 impl App {
     pub fn new(window: &Window) -> Self {
         let mut ctx = Context::init(window);
-        let render_pipeline = render::Pipeline::create(&mut ctx);
+        let render_pipeline = render::Renderer::create(&mut ctx);
+
+        let uniforms = UniformObjects {
+            transforms: shared::ModelViewProjection::new(
+                glam::Mat4::default(),
+                glam::Mat4::look_at_rh(
+                    glam::vec3(0.0, -2.0, 1.0),
+                    glam::vec3(0.0, 0.0, 0.0),
+                    glam::vec3(0.0, 0.0, 1.0),
+                ),
+                glam::Mat4::perspective_rh(
+                    f32::to_radians(45.0),
+                    ctx.surface.config.extent.width as f32
+                        / ctx.surface.config.extent.height as f32,
+                    0.1,
+                    10.,
+                ),
+            ),
+        };
 
         Self {
             ctx,
             render_pipeline,
 
-            resized: false,
+            uniforms,
+            needs_resizing: false,
+            start_time: Instant::now(),
             last_frame: Instant::now(),
         }
     }
 
     fn render(&mut self) {
-        if self.resized {
-            self.recreate();
+        if self.needs_resizing {
+            if self.recreate() {
+                self.needs_resizing = false;
+            } else {
+                return;
+            }
         }
 
+        let millis_for_1_rotation = 2000;
+        let frac_millis = (self.start_time.elapsed().as_millis() % millis_for_1_rotation) as f32
+            / millis_for_1_rotation as f32;
+        let rotation_angle = frac_millis * 2.0 * std::f32::consts::PI;
+        let shift = glam::Mat4::from_translation(glam::vec3(0.5, 0.5, 0.0));
+        self.uniforms.transforms.model =
+            shift.inverse() * glam::Mat4::from_rotation_z(rotation_angle) * shift;
+
         if matches!(
-            self.render_pipeline.render(&self.ctx),
+            self.render_pipeline.render(&self.ctx, &self.uniforms),
             Err(render::Error::NeedsRecreating)
         ) {
-            self.resized = true;
+            self.needs_resizing = true;
         }
 
         let now = Instant::now();
@@ -52,12 +88,13 @@ impl App {
         self.last_frame = now;
     }
 
-    fn recreate(&mut self) {
+    fn recreate(&mut self) -> bool {
         unsafe { self.ctx.device_wait_idle() };
-        if self.ctx.refresh_surface_capabilities() {
+        let is_valid = self.ctx.refresh_surface_capabilities();
+        if is_valid {
             self.render_pipeline.recreate(&mut self.ctx);
         }
-        self.resized = false;
+        is_valid
     }
 
     pub fn init_window(event_loop: &EventLoop<()>) -> Window {
@@ -73,7 +110,7 @@ impl App {
             Event::MainEventsCleared => window.request_redraw(),
             Event::WindowEvent { ref event, .. } => match event {
                 WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
-                    self.resized = true;
+                    self.needs_resizing = true;
                 }
                 WindowEvent::CloseRequested
                 | WindowEvent::KeyboardInput {

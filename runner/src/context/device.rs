@@ -12,19 +12,25 @@ use super::{
     features::Features,
     gpu_alloc,
     instance::Instance,
-    queue::{self, Queue},
+    queue::{Families, Queues},
 };
 
 pub mod conf {
     pub const REQUIRED_EXTENSIONS: &[*const std::ffi::c_char] = &[
+        // Core
         ash::extensions::khr::Swapchain::name().as_ptr(),
         ash::vk::KhrVulkanMemoryModelFn::name().as_ptr(),
+        // Acceleration Structure
+        ash::extensions::khr::AccelerationStructure::name().as_ptr(),
+        ash::extensions::khr::DeferredHostOperations::name().as_ptr(),
+        // Ray Tracing
+        ash::extensions::khr::RayTracingPipeline::name().as_ptr(),
     ];
 }
 
 pub struct Device {
     device: ash::Device,
-    pub queue: Queue,
+    pub queues: Queues,
     pub allocator: ManuallyDrop<gpu_alloc::Allocator>,
 }
 
@@ -32,14 +38,16 @@ impl Device {
     pub fn new(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,
-        families: queue::Families,
+        families: Families,
     ) -> Self {
         let mut required_features = Features::required();
-        let queue_create_infos = queue::Queue::create_infos(&families);
+
+        let queue_create_infos = Queues::create_infos(&families);
+
         let create_info = vk::DeviceCreateInfo::builder()
-            .queue_create_infos(&queue_create_infos)
             .enabled_extension_names(conf::REQUIRED_EXTENSIONS)
-            .push_next(required_features.v_1_0.as_mut());
+            .push_next(required_features.v_1_0.as_mut())
+            .queue_create_infos(&queue_create_infos);
 
         let device = unsafe {
             instance
@@ -47,13 +55,7 @@ impl Device {
                 .expect("Failed to create logical device")
         };
 
-        let queue = unsafe {
-            Queue {
-                graphics: device.get_device_queue(families.graphics(), 0),
-                present: device.get_device_queue(families.present(), 0),
-                families,
-            }
-        };
+        let queues = Queues::create(&device, families);
 
         let allocator_create_info = gpu_alloc::AllocatorCreateDesc {
             instance: (*instance).clone(),
@@ -69,20 +71,13 @@ impl Device {
 
         Self {
             device,
-            queue,
+            queues,
             allocator: ManuallyDrop::new(allocator),
         }
     }
 
-    pub fn create_command_pool(&self) -> vk::CommandPool {
-        let create_info = vk::CommandPoolCreateInfo::builder()
-            .queue_family_index(self.queue.families.graphics())
-            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER);
-        unsafe {
-            self.device
-                .create_command_pool(&create_info, None)
-                .expect("Failed to create command pool")
-        }
+    pub fn surface_updated(&self) {
+        self.queues.surface_updated(self);
     }
 
     pub fn create_semaphore(&self, name: &str) -> vk::Semaphore {
@@ -123,6 +118,7 @@ impl Device {
 impl Destroy<()> for Device {
     unsafe fn destroy_with(&mut self, _: ()) {
         ManuallyDrop::drop(&mut self.allocator);
+        self.queues.destroy_with(&self.device);
         self.device.destroy_device(None);
     }
 }

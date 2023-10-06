@@ -42,7 +42,11 @@ impl Context {
     }
 
     pub fn refresh_surface_capabilities(&mut self) -> bool {
-        self.surface.refresh_capabilities(self.physical_device)
+        let is_valid = self.surface.refresh_capabilities(self.physical_device);
+        if is_valid {
+            self.device.surface_updated();
+        }
+        is_valid
     }
 
     pub unsafe fn device_wait_idle(&self) {

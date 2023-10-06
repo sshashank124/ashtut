@@ -2,6 +2,8 @@ use ash::{extensions::khr, vk};
 
 use crate::{context::Context, util::Destroy};
 
+use super::pass::Pass;
+
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
     pub loader: khr::Swapchain,
@@ -10,7 +12,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn create(ctx: &mut Context, pass: vk::RenderPass) -> Self {
+    pub fn create(ctx: &mut Context, pass: &Pass) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(**ctx.surface)
             .min_image_count(ctx.surface.config.image_count)
@@ -19,23 +21,11 @@ impl Swapchain {
             .image_extent(ctx.surface.config.extent)
             .image_array_layers(1)
             .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(vk::SurfaceTransformFlagsKHR::IDENTITY)
             .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
             .present_mode(ctx.surface.config.present_mode)
             .clipped(true);
-
-        let create_info = if let Some(different_indices) = ctx
-            .device
-            .queue
-            .families
-            .separate_graphics_and_presentation_indices()
-        {
-            create_info
-                .image_sharing_mode(vk::SharingMode::CONCURRENT)
-                .queue_family_indices(different_indices)
-        } else {
-            create_info.image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-        };
 
         let loader = khr::Swapchain::new(&ctx.instance, &ctx.device);
 
@@ -54,7 +44,7 @@ impl Swapchain {
         ctx.surface.config.image_count = images.len() as u32;
 
         let image_views = Self::create_image_views(ctx, &images);
-        let framebuffers = Self::create_framebuffers(ctx, pass, &image_views);
+        let framebuffers = Self::create_framebuffers(ctx, **pass, &image_views);
 
         Self {
             swapchain,
@@ -135,7 +125,7 @@ impl Swapchain {
 
         unsafe {
             self.loader
-                .queue_present(ctx.device.queue.present, &present_info)
+                .queue_present(*ctx.device.queues.graphics, &present_info)
                 .unwrap_or(true)
         }
     }
