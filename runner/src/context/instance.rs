@@ -12,7 +12,7 @@ use crate::util::{self, Destroy};
 use super::{features::Features, queue, surface, validator::Validator};
 
 mod conf {
-    pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 261);
+    pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 0);
     pub const ENABLED_EXTENSIONS: &[*const std::ffi::c_char] = &[
         // Debug
         ash::extensions::ext::DebugUtils::name().as_ptr(),

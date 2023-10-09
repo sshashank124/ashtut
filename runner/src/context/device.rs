@@ -19,7 +19,6 @@ pub mod conf {
     pub const REQUIRED_EXTENSIONS: &[*const std::ffi::c_char] = &[
         // Core
         ash::extensions::khr::Swapchain::name().as_ptr(),
-        ash::vk::KhrVulkanMemoryModelFn::name().as_ptr(),
         // Acceleration Structure
         ash::extensions::khr::AccelerationStructure::name().as_ptr(),
         ash::extensions::khr::DeferredHostOperations::name().as_ptr(),
@@ -38,11 +37,11 @@ impl Device {
     pub fn new(
         instance: &Instance,
         physical_device: vk::PhysicalDevice,
-        families: Families,
+        families: &Families,
     ) -> Self {
         let mut required_features = Features::required();
 
-        let queue_create_infos = Queues::create_infos(&families);
+        let queue_create_infos = Queues::create_infos(families);
 
         let create_info = vk::DeviceCreateInfo::builder()
             .enabled_extension_names(conf::REQUIRED_EXTENSIONS)
@@ -74,10 +73,6 @@ impl Device {
             queues,
             allocator: ManuallyDrop::new(allocator),
         }
-    }
-
-    pub fn surface_updated(&self) {
-        self.queues.surface_updated(self);
     }
 
     pub fn create_semaphore(&self, name: &str) -> vk::Semaphore {
@@ -113,12 +108,16 @@ impl Device {
                 .expect("Failed to create shader module")
         }
     }
+
+    pub unsafe fn wait_idle(&self) {
+        self.device_wait_idle()
+            .expect("Failed to wait for device to idle");
+    }
 }
 
 impl Destroy<()> for Device {
     unsafe fn destroy_with(&mut self, _: ()) {
         ManuallyDrop::drop(&mut self.allocator);
-        self.queues.destroy_with(&self.device);
         self.device.destroy_device(None);
     }
 }

@@ -67,13 +67,11 @@ impl App {
             }
         }
 
-        let millis_for_1_rotation = 2000;
+        let millis_for_1_rotation = 3000;
         let frac_millis = (self.start_time.elapsed().as_millis() % millis_for_1_rotation) as f32
             / millis_for_1_rotation as f32;
         let rotation_angle = frac_millis * 2.0 * std::f32::consts::PI;
-        let shift = glam::Mat4::from_translation(glam::vec3(0.5, 0.5, 0.0));
-        self.uniforms.transforms.model =
-            shift.inverse() * glam::Mat4::from_rotation_z(rotation_angle) * shift;
+        self.uniforms.transforms.model = glam::Mat4::from_rotation_z(rotation_angle);
 
         if matches!(
             self.render_pipeline.render(&self.ctx, &self.uniforms),
@@ -89,7 +87,7 @@ impl App {
     }
 
     fn recreate(&mut self) -> bool {
-        unsafe { self.ctx.device_wait_idle() };
+        unsafe { self.ctx.wait_idle() };
         let is_valid = self.ctx.refresh_surface_capabilities();
         if is_valid {
             self.render_pipeline.recreate(&mut self.ctx);
@@ -132,7 +130,7 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         unsafe {
-            self.ctx.device_wait_idle();
+            self.ctx.wait_idle();
             self.render_pipeline.destroy_with(&mut self.ctx);
             self.ctx.destroy_with(());
         }

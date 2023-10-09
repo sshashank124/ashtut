@@ -50,6 +50,7 @@ impl Default for Features {
             .push_next(v_1_1.as_mut())
             .build()
             .into();
+
         Self {
             v_1_0,
             v_1_1,

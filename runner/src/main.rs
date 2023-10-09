@@ -9,11 +9,11 @@
 )]
 
 mod app;
-mod buffer;
 mod context;
 mod render;
 mod util;
 mod vertex;
+mod wrapper;
 
 use winit::event_loop::EventLoop;
 

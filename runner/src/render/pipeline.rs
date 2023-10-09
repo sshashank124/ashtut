@@ -27,7 +27,7 @@ impl Pipeline {
         pass: vk::RenderPass,
         descriptor_set_layout: vk::DescriptorSetLayout,
     ) -> Self {
-        let shader_module = ctx.device.create_shader_module_from_file(conf::SHADER_FILE);
+        let shader_module = ctx.create_shader_module_from_file(conf::SHADER_FILE);
         let shader_stages = [
             vk::PipelineShaderStageCreateInfo::builder()
                 .stage(vk::ShaderStageFlags::VERTEX)
@@ -85,8 +85,7 @@ impl Pipeline {
             vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
 
         let layout = unsafe {
-            ctx.device
-                .create_pipeline_layout(&layout_create_info, None)
+            ctx.create_pipeline_layout(&layout_create_info, None)
                 .expect("Failed to create graphics pipeline layout")
         };
 
@@ -104,12 +103,11 @@ impl Pipeline {
             .build()];
 
         let pipeline = unsafe {
-            ctx.device
-                .create_graphics_pipelines(vk::PipelineCache::null(), &create_infos, None)
+            ctx.create_graphics_pipelines(vk::PipelineCache::null(), &create_infos, None)
                 .expect("Failed to create graphics pipeline")[0]
         };
 
-        unsafe { ctx.device.destroy_shader_module(shader_module, None) };
+        unsafe { ctx.destroy_shader_module(shader_module, None) };
 
         Self { layout, pipeline }
     }
@@ -117,8 +115,8 @@ impl Pipeline {
 
 impl<'a> Destroy<&'a mut Context> for Pipeline {
     unsafe fn destroy_with(&mut self, ctx: &'a mut Context) {
-        ctx.device.destroy_pipeline(self.pipeline, None);
-        ctx.device.destroy_pipeline_layout(self.layout, None);
+        ctx.destroy_pipeline(self.pipeline, None);
+        ctx.destroy_pipeline_layout(self.layout, None);
     }
 }
 

@@ -2,19 +2,16 @@ use std::{collections::HashSet, ops::Deref};
 
 use ash::vk;
 
-use crate::util::Destroy;
-
-use super::{device::Device, instance::Instance, surface::Handle};
+use super::{instance::Instance, surface::Handle};
 
 pub struct Queues {
-    pub graphics: Queue,
-    pub transfer: Queue,
-    pub families: Families,
+    graphics: Queue,
+    transfer: Queue,
 }
 
 pub struct Queue {
     pub queue: vk::Queue,
-    pub command_pools: Vec<vk::CommandPool>,
+    pub family_index: u32,
 }
 
 pub struct Families {
@@ -29,48 +26,19 @@ struct FamiliesInfo {
 }
 
 impl Queues {
-    pub fn create(device: &ash::Device, families: Families) -> Self {
-        let graphics = {
-            let pool_infos = [vk::CommandPoolCreateInfo::builder()
-                .queue_family_index(families.graphics)
-                .build()];
+    pub fn create(device: &ash::Device, families: &Families) -> Self {
+        let graphics = Queue::create(device, families.graphics);
+        let transfer = Queue::create(device, families.transfer);
 
-            Queue::create(device, &pool_infos)
-        };
-
-        let transfer = {
-            let pool_info = [
-                vk::CommandPoolCreateInfo::builder()
-                    .queue_family_index(families.transfer)
-                    .build(),
-                vk::CommandPoolCreateInfo::builder()
-                    .queue_family_index(families.transfer)
-                    .flags(vk::CommandPoolCreateFlags::TRANSIENT)
-                    .build(),
-            ];
-
-            Queue::create(device, &pool_info)
-        };
-
-        Self {
-            graphics,
-            transfer,
-            families,
-        }
+        Self { graphics, transfer }
     }
 
-    pub fn graphics_pool(&self) -> vk::CommandPool {
-        self.graphics.command_pools[0]
+    pub const fn graphics(&self) -> &Queue {
+        &self.graphics
     }
 
-    /*
-    pub fn transfer_pool(&self) -> vk::CommandPool {
-        self.transfer.command_pools[0]
-    }
-    */
-
-    pub fn transient_transfer_pool(&self) -> vk::CommandPool {
-        self.transfer.command_pools[1]
+    pub const fn transfer(&self) -> &Queue {
+        &self.transfer
     }
 
     pub fn create_infos(indices: &Families) -> Vec<vk::DeviceQueueCreateInfo> {
@@ -85,41 +53,15 @@ impl Queues {
             })
             .collect::<Vec<_>>()
     }
-
-    pub fn surface_updated(&self, device: &Device) {
-        self.graphics.reset(device);
-    }
 }
 
 impl Queue {
-    pub fn create(device: &ash::Device, pool_infos: &[vk::CommandPoolCreateInfo]) -> Self {
-        let queue = unsafe { device.get_device_queue(pool_infos[0].queue_family_index, 0) };
-
-        let command_pools = pool_infos
-            .iter()
-            .map(|pool_info| unsafe { device.create_command_pool(pool_info, None) })
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap_or_else(|_| {
-                panic!(
-                    "Failed to create command pool for queue_family@{}",
-                    pool_infos[0].queue_family_index
-                )
-            });
+    pub fn create(device: &ash::Device, family_index: u32) -> Self {
+        let queue = unsafe { device.get_device_queue(family_index, 0) };
 
         Self {
             queue,
-            command_pools,
-        }
-    }
-
-    pub fn reset(&self, device: &Device) {
-        unsafe {
-            self.command_pools
-                .iter()
-                .try_for_each(|&command_pool| {
-                    device.reset_command_pool(command_pool, vk::CommandPoolResetFlags::empty())
-                })
-                .expect("Failed to reset command pools");
+            family_index,
         }
     }
 }
@@ -175,21 +117,6 @@ impl Families {
         }
 
         Self::try_from(found_indices).ok()
-    }
-}
-
-impl<'a> Destroy<&'a ash::Device> for Queues {
-    unsafe fn destroy_with(&mut self, device: &'a ash::Device) {
-        self.graphics.destroy_with(device);
-        self.transfer.destroy_with(device);
-    }
-}
-
-impl<'a> Destroy<&'a ash::Device> for Queue {
-    unsafe fn destroy_with(&mut self, device: &'a ash::Device) {
-        for &command_pool in &self.command_pools {
-            device.destroy_command_pool(command_pool, None);
-        }
     }
 }
 

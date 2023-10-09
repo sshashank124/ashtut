@@ -5,6 +5,8 @@ mod queue;
 mod surface;
 mod validator;
 
+use std::ops::{Deref, DerefMut};
+
 use ash::vk;
 pub use gpu_allocator::vulkan as gpu_alloc;
 
@@ -29,7 +31,7 @@ impl Context {
         let (physical_device, queue_families, surface_config) =
             instance.get_physical_device_and_info(&surface_handle);
 
-        let device = Device::new(&instance, physical_device, queue_families);
+        let device = Device::new(&instance, physical_device, &queue_families);
 
         let surface = Surface::new(surface_handle, surface_config);
 
@@ -42,17 +44,7 @@ impl Context {
     }
 
     pub fn refresh_surface_capabilities(&mut self) -> bool {
-        let is_valid = self.surface.refresh_capabilities(self.physical_device);
-        if is_valid {
-            self.device.surface_updated();
-        }
-        is_valid
-    }
-
-    pub unsafe fn device_wait_idle(&self) {
-        self.device
-            .device_wait_idle()
-            .expect("Failed to wait for device to idle");
+        self.surface.refresh_capabilities(self.physical_device)
     }
 }
 
@@ -64,4 +56,15 @@ impl Destroy<()> for Context {
     }
 }
 
-mod config {}
+impl Deref for Context {
+    type Target = Device;
+    fn deref(&self) -> &Self::Target {
+        &self.device
+    }
+}
+
+impl DerefMut for Context {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.device
+    }
+}

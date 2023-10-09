@@ -27,7 +27,7 @@ impl Swapchain {
             .present_mode(ctx.surface.config.present_mode)
             .clipped(true);
 
-        let loader = khr::Swapchain::new(&ctx.instance, &ctx.device);
+        let loader = khr::Swapchain::new(&ctx.instance, ctx);
 
         let swapchain = unsafe {
             loader
@@ -68,8 +68,7 @@ impl Swapchain {
                     .format(ctx.surface.config.surface_format.format)
                     .subresource_range(*subresource_range);
                 unsafe {
-                    ctx.device
-                        .create_image_view(&create_info, None)
+                    ctx.create_image_view(&create_info, None)
                         .expect("Failed to create image view")
                 }
             })
@@ -92,8 +91,7 @@ impl Swapchain {
                     .height(ctx.surface.config.extent.height)
                     .layers(1);
                 unsafe {
-                    ctx.device
-                        .create_framebuffer(&create_info, None)
+                    ctx.create_framebuffer(&create_info, None)
                         .expect("Failed to create framebuffer")
                 }
             })
@@ -112,11 +110,11 @@ impl Swapchain {
     pub fn present_to_when(
         &self,
         ctx: &Context,
-        image_index: u32,
+        image_index: usize,
         wait_on: &[vk::Semaphore],
     ) -> bool {
         let swapchains = [self.swapchain];
-        let image_indices = [image_index];
+        let image_indices = [image_index as u32];
 
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(wait_on)
@@ -125,7 +123,7 @@ impl Swapchain {
 
         unsafe {
             self.loader
-                .queue_present(*ctx.device.queues.graphics, &present_info)
+                .queue_present(**ctx.queues.graphics(), &present_info)
                 .unwrap_or(true)
         }
     }
@@ -134,10 +132,10 @@ impl Swapchain {
 impl<'a> Destroy<&'a Context> for Swapchain {
     unsafe fn destroy_with(&mut self, ctx: &'a Context) {
         for &framebuffer in &self.framebuffers {
-            ctx.device.destroy_framebuffer(framebuffer, None);
+            ctx.destroy_framebuffer(framebuffer, None);
         }
         for &image_view in &self.image_views {
-            ctx.device.destroy_image_view(image_view, None);
+            ctx.destroy_image_view(image_view, None);
         }
         self.loader.destroy_swapchain(self.swapchain, None);
     }

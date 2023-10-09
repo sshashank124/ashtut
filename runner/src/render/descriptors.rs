@@ -30,8 +30,7 @@ impl Descriptors {
         let layout_info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
 
         unsafe {
-            ctx.device
-                .create_descriptor_set_layout(&layout_info, None)
+            ctx.create_descriptor_set_layout(&layout_info, None)
                 .expect("Failed to create descriptor set layout")
         }
     }
@@ -46,8 +45,7 @@ impl Descriptors {
             .pool_sizes(&sizes)
             .max_sets(num_uniform_buffers);
         unsafe {
-            ctx.device
-                .create_descriptor_pool(&info, None)
+            ctx.create_descriptor_pool(&info, None)
                 .expect("Failed to create descriptor pool")
         }
     }
@@ -64,8 +62,7 @@ impl Descriptors {
             .set_layouts(&layouts);
 
         unsafe {
-            ctx.device
-                .allocate_descriptor_sets(&alloc_info)
+            ctx.allocate_descriptor_sets(&alloc_info)
                 .expect("Failed to allocate descriptor sets")
         }
     }
@@ -85,7 +82,7 @@ impl Descriptors {
                 .build()];
 
             unsafe {
-                ctx.device.update_descriptor_sets(&writes, &[]);
+                ctx.update_descriptor_sets(&writes, &[]);
             }
         }
     }
@@ -93,7 +90,7 @@ impl Descriptors {
 
 impl<'a> Destroy<&'a mut Context> for Descriptors {
     unsafe fn destroy_with(&mut self, ctx: &'a mut Context) {
-        ctx.device.destroy_descriptor_pool(self.pool, None);
-        ctx.device.destroy_descriptor_set_layout(self.layout, None);
+        ctx.destroy_descriptor_pool(self.pool, None);
+        ctx.destroy_descriptor_set_layout(self.layout, None);
     }
 }

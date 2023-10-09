@@ -2,7 +2,7 @@ use ash::vk;
 
 use shared::UniformObjects;
 
-use crate::{buffer::Buffer, context::Context, util::Destroy};
+use crate::{context::Context, util::Destroy, wrapper::buffer::Buffer};
 
 pub struct Uniforms {
     pub buffers: Vec<Buffer>,
@@ -29,8 +29,8 @@ impl Uniforms {
         Self { buffers }
     }
 
-    pub fn update(&mut self, current_frame: u32, uniforms: &UniformObjects) {
-        self.buffers[current_frame as usize].fill_with(uniforms);
+    pub fn update(&mut self, current_frame: usize, uniforms: &UniformObjects) {
+        self.buffers[current_frame].fill_with(uniforms);
     }
 }
 

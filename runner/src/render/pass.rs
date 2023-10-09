@@ -44,8 +44,7 @@ impl Pass {
             .dependencies(&dependencies);
 
         let pass = unsafe {
-            ctx.device
-                .create_render_pass(&create_info, None)
+            ctx.create_render_pass(&create_info, None)
                 .expect("Failed to create render pass")
         };
 
@@ -55,7 +54,7 @@ impl Pass {
 
 impl<'a> Destroy<&'a Context> for Pass {
     unsafe fn destroy_with(&mut self, ctx: &'a Context) {
-        ctx.device.destroy_render_pass(self.pass, None);
+        ctx.destroy_render_pass(self.pass, None);
     }
 }
 

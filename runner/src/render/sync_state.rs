@@ -23,9 +23,9 @@ impl SyncState {
         let mut in_flight = Vec::with_capacity(conf::MAX_FRAMES_IN_FLIGHT);
 
         for _ in 0..conf::MAX_FRAMES_IN_FLIGHT {
-            image_available.push(ctx.device.create_semaphore("image_available"));
-            render_finished.push(ctx.device.create_semaphore("render_finished"));
-            in_flight.push(ctx.device.create_fence("in_flight", true));
+            image_available.push(ctx.create_semaphore("image_available"));
+            render_finished.push(ctx.create_semaphore("render_finished"));
+            in_flight.push(ctx.create_fence("in_flight", true));
         }
 
         Self {
@@ -56,9 +56,9 @@ impl SyncState {
 impl<'a> Destroy<&'a Context> for SyncState {
     unsafe fn destroy_with(&mut self, ctx: &'a Context) {
         for i in 0..conf::MAX_FRAMES_IN_FLIGHT {
-            ctx.device.destroy_semaphore(self.image_available[i], None);
-            ctx.device.destroy_semaphore(self.render_finished[i], None);
-            ctx.device.destroy_fence(self.in_flight[i], None);
+            ctx.destroy_semaphore(self.image_available[i], None);
+            ctx.destroy_semaphore(self.render_finished[i], None);
+            ctx.destroy_fence(self.in_flight[i], None);
         }
     }
 }

@@ -22,12 +22,11 @@ impl Buffer {
         location: gpu_allocator::MemoryLocation,
     ) -> Self {
         let buffer = unsafe {
-            ctx.device
-                .create_buffer(&create_info, None)
+            ctx.create_buffer(&create_info, None)
                 .expect("Failed to create buffer")
         };
 
-        let requirements = unsafe { ctx.device.get_buffer_memory_requirements(buffer) };
+        let requirements = unsafe { ctx.get_buffer_memory_requirements(buffer) };
         let allocation_create_info = gpu_alloc::AllocationCreateDesc {
             name,
             requirements,
@@ -43,8 +42,7 @@ impl Buffer {
             .expect("Failed to allocate memory");
 
         unsafe {
-            ctx.device
-                .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
+            ctx.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
                 .expect("Failed to bind memory");
         }
 
@@ -68,6 +66,7 @@ impl Buffer {
 
     pub fn create_with_staged_data(
         ctx: &mut Context,
+        command_buffer: vk::CommandBuffer,
         name: &str,
         mut info: vk::BufferCreateInfo,
         data_sources: &[&[u8]],
@@ -85,7 +84,7 @@ impl Buffer {
         info.usage |= vk::BufferUsageFlags::TRANSFER_DST;
         info.size = util::total_size(data_sources) as u64;
         let mut buffer = Self::create(ctx, name, info, gpu_allocator::MemoryLocation::GpuOnly);
-        buffer.copy_from(ctx, &staging, info.size);
+        buffer.record_copy_from(ctx, command_buffer, &staging, info.size);
 
         unsafe {
             staging.destroy_with(ctx);
@@ -117,50 +116,17 @@ impl Buffer {
         }
     }
 
-    pub fn copy_from(&mut self, ctx: &Context, src: &Self, size: u64) {
-        let allocate_info = vk::CommandBufferAllocateInfo::builder()
-            .command_pool(ctx.device.queues.transient_transfer_pool())
-            .command_buffer_count(1);
-
-        let command_buffers = unsafe {
-            ctx.device
-                .allocate_command_buffers(&allocate_info)
-                .expect("Failed to allocate command buffer")
-        };
-
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
+    pub fn record_copy_from(
+        &mut self,
+        ctx: &Context,
+        command_buffer: vk::CommandBuffer,
+        src: &Self,
+        size: u64,
+    ) {
         let copy_info = [vk::BufferCopy::builder().size(size).build()];
 
-        let submit_info = [vk::SubmitInfo::builder()
-            .command_buffers(&command_buffers)
-            .build()];
-
         unsafe {
-            ctx.device
-                .begin_command_buffer(command_buffers[0], &begin_info)
-                .expect("Failed to begin recording command buffer");
-
-            ctx.device
-                .cmd_copy_buffer(command_buffers[0], **src, **self, &copy_info);
-
-            ctx.device
-                .end_command_buffer(command_buffers[0])
-                .expect("Failed to end recording command buffer");
-
-            ctx.device
-                .queue_submit(*ctx.device.queues.transfer, &submit_info, vk::Fence::null())
-                .expect("Failed to submit command to `transfer` queue");
-
-            ctx.device
-                .queue_wait_idle(*ctx.device.queues.transfer)
-                .expect("Failed to wait for transfer queue to idle");
-
-            ctx.device.free_command_buffers(
-                ctx.device.queues.transient_transfer_pool(),
-                &command_buffers,
-            );
+            ctx.cmd_copy_buffer(command_buffer, **src, **self, &copy_info);
         }
     }
 }
@@ -168,12 +134,11 @@ impl Buffer {
 impl<'a> Destroy<&'a mut Context> for Buffer {
     unsafe fn destroy_with(&mut self, ctx: &'a mut Context) {
         if let Some(allocation) = self.allocation.take() {
-            ctx.device
-                .allocator
+            ctx.allocator
                 .free(allocation)
                 .expect("Failed to free allocated memory");
         }
-        ctx.device.destroy_buffer(self.buffer, None);
+        ctx.destroy_buffer(self.buffer, None);
     }
 }
 
