@@ -52,8 +52,8 @@ impl Pass {
     }
 }
 
-impl<'a> Destroy<&'a Context> for Pass {
-    unsafe fn destroy_with(&mut self, ctx: &'a Context) {
+impl Destroy<Context> for Pass {
+    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         ctx.destroy_render_pass(self.pass, None);
     }
 }

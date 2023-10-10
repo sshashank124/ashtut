@@ -129,8 +129,8 @@ impl Swapchain {
     }
 }
 
-impl<'a> Destroy<&'a Context> for Swapchain {
-    unsafe fn destroy_with(&mut self, ctx: &'a Context) {
+impl Destroy<Context> for Swapchain {
+    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         for &framebuffer in &self.framebuffers {
             ctx.destroy_framebuffer(framebuffer, None);
         }

@@ -26,14 +26,14 @@ impl Descriptions for Vertex {
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 0,
-                format: vk::Format::R32G32_SFLOAT,
+                format: vk::Format::R32G32B32_SFLOAT,
                 offset: bytemuck::offset_of!(Self, position) as u32,
             },
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 1,
-                format: vk::Format::R32G32B32_SFLOAT,
-                offset: bytemuck::offset_of!(Self, color) as u32,
+                format: vk::Format::R32G32_SFLOAT,
+                offset: bytemuck::offset_of!(Self, tex_coord) as u32,
             },
         ]
     }

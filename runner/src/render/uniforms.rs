@@ -2,7 +2,7 @@ use ash::vk;
 
 use shared::UniformObjects;
 
-use crate::{context::Context, util::Destroy, wrapper::buffer::Buffer};
+use crate::{context::Context, engine::buffer::Buffer, util::Destroy};
 
 pub struct Uniforms {
     pub buffers: Vec<Buffer>,
@@ -34,8 +34,8 @@ impl Uniforms {
     }
 }
 
-impl<'a> Destroy<&'a mut Context> for Uniforms {
-    unsafe fn destroy_with(&mut self, ctx: &'a mut Context) {
+impl Destroy<Context> for Uniforms {
+    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         for buffer in &mut self.buffers {
             buffer.destroy_with(ctx);
         }

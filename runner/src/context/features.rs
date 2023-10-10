@@ -16,12 +16,13 @@ pub struct Features {
 impl Features {
     pub fn required() -> Self {
         let mut features = Self::default();
+        features.v_1_0.features.sampler_anisotropy = 1;
         features.v_1_2.vulkan_memory_model = 1;
         features
     }
 
     pub const fn supports_requirements(&self) -> bool {
-        self.v_1_2.vulkan_memory_model > 0
+        self.v_1_2.vulkan_memory_model > 0 && self.v_1_0.features.sampler_anisotropy > 0
     }
 
     pub fn get_supported(instance: &Instance, physical_device: vk::PhysicalDevice) -> Self {

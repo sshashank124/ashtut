@@ -6,7 +6,6 @@ use super::{instance::Instance, surface::Handle};
 
 pub struct Queues {
     graphics: Queue,
-    transfer: Queue,
 }
 
 pub struct Queue {
@@ -16,29 +15,22 @@ pub struct Queue {
 
 pub struct Families {
     pub graphics: u32,
-    pub transfer: u32,
 }
 
 #[derive(Debug, Default)]
 struct FamiliesInfo {
     graphics: Option<u32>,
-    transfer: Option<u32>,
 }
 
 impl Queues {
     pub fn create(device: &ash::Device, families: &Families) -> Self {
         let graphics = Queue::create(device, families.graphics);
-        let transfer = Queue::create(device, families.transfer);
 
-        Self { graphics, transfer }
+        Self { graphics }
     }
 
     pub const fn graphics(&self) -> &Queue {
         &self.graphics
-    }
-
-    pub const fn transfer(&self) -> &Queue {
-        &self.transfer
     }
 
     pub fn create_infos(indices: &Families) -> Vec<vk::DeviceQueueCreateInfo> {
@@ -68,7 +60,7 @@ impl Queue {
 
 impl Families {
     pub fn unique(&self) -> HashSet<u32> {
-        HashSet::from([self.graphics, self.transfer])
+        HashSet::from([self.graphics])
     }
 
     pub fn find(
@@ -91,28 +83,12 @@ impl Families {
             let c = queue_family.queue_flags.contains(vk::QueueFlags::COMPUTE);
             let t = queue_family.queue_flags.contains(vk::QueueFlags::TRANSFER);
 
-            if g && surface.is_supported_by(physical_device, index as u32) {
+            if g && c && t && surface.is_supported_by(physical_device, index as u32) {
                 found_indices.graphics = Some(index as u32);
-            }
-
-            if t && !g && !c {
-                found_indices.transfer = Some(index as u32);
             }
 
             if found_indices.is_complete() {
                 break;
-            }
-        }
-
-        if !found_indices.is_complete() {
-            for &(index, queue_family) in &valid_queue_families {
-                if queue_family.queue_flags.contains(vk::QueueFlags::TRANSFER) {
-                    found_indices.transfer = Some(index as u32);
-                }
-
-                if found_indices.is_complete() {
-                    break;
-                }
             }
         }
 
@@ -132,13 +108,12 @@ impl TryFrom<FamiliesInfo> for Families {
     fn try_from(value: FamiliesInfo) -> Result<Self, Self::Error> {
         Ok(Self {
             graphics: value.graphics.ok_or(())?,
-            transfer: value.transfer.ok_or(())?,
         })
     }
 }
 
 impl FamiliesInfo {
     pub const fn is_complete(&self) -> bool {
-        self.graphics.is_some() && self.transfer.is_some()
+        self.graphics.is_some()
     }
 }

@@ -113,8 +113,8 @@ impl Pipeline {
     }
 }
 
-impl<'a> Destroy<&'a mut Context> for Pipeline {
-    unsafe fn destroy_with(&mut self, ctx: &'a mut Context) {
+impl Destroy<Context> for Pipeline {
+    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         ctx.destroy_pipeline(self.pipeline, None);
         ctx.destroy_pipeline_layout(self.layout, None);
     }

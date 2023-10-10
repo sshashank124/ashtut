@@ -9,6 +9,8 @@ use crate::{
     util::{self, Destroy},
 };
 
+use super::command_builder::CommandBuilder;
+
 pub struct Buffer {
     buffer: vk::Buffer,
     allocation: Option<gpu_alloc::Allocation>,
@@ -66,12 +68,12 @@ impl Buffer {
 
     pub fn create_with_staged_data(
         ctx: &mut Context,
-        command_buffer: vk::CommandBuffer,
+        command_builder: &mut CommandBuilder,
         name: &str,
         mut info: vk::BufferCreateInfo,
         data_sources: &[&[u8]],
     ) -> Self {
-        let mut staging = Self::create_with_data(
+        let staging = Self::create_with_data(
             ctx,
             &format!("{name} [STAGING]"),
             vk::BufferCreateInfo {
@@ -84,11 +86,9 @@ impl Buffer {
         info.usage |= vk::BufferUsageFlags::TRANSFER_DST;
         info.size = util::total_size(data_sources) as u64;
         let mut buffer = Self::create(ctx, name, info, gpu_allocator::MemoryLocation::GpuOnly);
-        buffer.record_copy_from(ctx, command_buffer, &staging, info.size);
+        buffer.record_copy_from(ctx, command_builder.command_buffer, &staging, info.size);
 
-        unsafe {
-            staging.destroy_with(ctx);
-        }
+        command_builder.add_for_destruction(staging);
 
         buffer
     }
@@ -131,8 +131,8 @@ impl Buffer {
     }
 }
 
-impl<'a> Destroy<&'a mut Context> for Buffer {
-    unsafe fn destroy_with(&mut self, ctx: &'a mut Context) {
+impl Destroy<Context> for Buffer {
+    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         if let Some(allocation) = self.allocation.take() {
             ctx.allocator
                 .free(allocation)

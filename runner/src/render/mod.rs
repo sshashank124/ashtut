@@ -1,7 +1,6 @@
 mod descriptors;
 mod pass;
 mod pipeline;
-mod setup;
 mod swapchain;
 mod sync_state;
 mod uniforms;
@@ -12,22 +11,25 @@ use shared::{bytemuck, UniformObjects};
 
 use crate::{
     context::Context,
+    engine::{
+        buffer::Buffer, command_builder::CommandBuilder, command_pool::CommandPool, image::Image,
+        sampled_image::SampledImage,
+    },
     util::{self, Destroy},
-    wrapper::{buffer::Buffer, command_pool::CommandPool},
 };
 
 use self::{
-    descriptors::Descriptors, pass::Pass, pipeline::Pipeline, setup::Setup, swapchain::Swapchain,
+    descriptors::Descriptors, pass::Pass, pipeline::Pipeline, swapchain::Swapchain,
     sync_state::SyncState, uniforms::Uniforms,
 };
 
 mod data {
     use shared::Vertex;
     pub const VERTICES_DATA: &[Vertex] = &[
-        Vertex::new([-0.5, -0.5], [1.0, 0.0, 0.0]),
-        Vertex::new([0.5, -0.5], [0.0, 1.0, 0.0]),
-        Vertex::new([0.5, 0.5], [0.0, 0.0, 1.0]),
-        Vertex::new([-0.5, 0.5], [1.0, 1.0, 0.0]),
+        Vertex::new([-0.5, -0.5, 0.0], [1.0, 0.0]),
+        Vertex::new([0.5, -0.5, 0.0], [0.0, 0.0]),
+        Vertex::new([0.5, 0.5, 0.0], [0.0, 1.0]),
+        Vertex::new([-0.5, 0.5, 0.0], [1.0, 1.0]),
     ];
     pub fn indices_offset() -> u64 {
         std::mem::size_of_val(VERTICES_DATA) as u64
@@ -45,6 +47,7 @@ pub struct Renderer {
     command_buffers: Vec<vk::CommandBuffer>,
 
     vertex_index_buffer: Buffer,
+    texture: SampledImage,
 
     // state
     pub uniforms: Uniforms,
@@ -66,14 +69,25 @@ impl Renderer {
 
         let (command_pools, command_buffers) = Self::create_command_pools_and_buffers(ctx);
 
-        let setup = Setup::init(ctx);
+        let mut setup = CommandBuilder::new(ctx, ctx.device.queues.graphics());
 
-        let vertex_index_buffer = Self::init_vertex_index_buffer(ctx, &setup);
+        let vertex_index_buffer = Self::init_vertex_index_buffer(ctx, &mut setup);
+
+        let texture = {
+            let image = Image::create_from_image(
+                ctx,
+                &mut setup,
+                "Texture",
+                &util::load_image_from_file("assets/textures/statue.jpg"),
+            );
+
+            SampledImage::create_with_sampler(ctx, image)
+        };
 
         setup.finish(ctx);
 
         let uniforms = Uniforms::create(ctx);
-        descriptors.add_uniforms(ctx, &uniforms);
+        descriptors.bind_descriptors(ctx, &uniforms, &texture);
 
         let state = SyncState::create(ctx);
 
@@ -88,6 +102,7 @@ impl Renderer {
             command_buffers,
 
             vertex_index_buffer,
+            texture,
 
             uniforms,
             state,
@@ -115,7 +130,7 @@ impl Renderer {
         (pools, buffers)
     }
 
-    fn init_vertex_index_buffer(ctx: &mut Context, setup: &Setup) -> Buffer {
+    fn init_vertex_index_buffer(ctx: &mut Context, setup: &mut CommandBuilder) -> Buffer {
         let data_sources = &[
             bytemuck::cast_slice(data::VERTICES_DATA),
             bytemuck::cast_slice(data::INDICES_DATA),
@@ -124,13 +139,7 @@ impl Renderer {
             .usage(vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
-        Buffer::create_with_staged_data(
-            ctx,
-            setup.transfer_commands,
-            "Vertex Buffer",
-            *create_info,
-            data_sources,
-        )
+        Buffer::create_with_staged_data(ctx, setup, "Vertex Buffer", *create_info, data_sources)
     }
 
     pub fn render(&mut self, ctx: &Context, uniforms: &UniformObjects) -> Result<(), Error> {
@@ -286,19 +295,21 @@ impl Renderer {
     }
 }
 
-impl<'a> Destroy<&'a mut Context> for Renderer {
-    unsafe fn destroy_with(&mut self, ctx: &'a mut Context) {
+impl Destroy<Context> for Renderer {
+    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.swapchain.destroy_with(ctx);
 
         self.state.destroy_with(ctx);
         self.uniforms.destroy_with(ctx);
+
+        self.texture.destroy_with(ctx);
+        self.vertex_index_buffer.destroy_with(ctx);
 
         for command_pool in &mut self.command_pools {
             command_pool.destroy_with(ctx);
         }
 
         self.descriptors.destroy_with(ctx);
-        self.vertex_index_buffer.destroy_with(ctx);
         self.pipeline.destroy_with(ctx);
         self.pass.destroy_with(ctx);
     }

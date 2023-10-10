@@ -11,7 +11,7 @@ pub trait Descriptions {
 }
 
 pub trait Destroy<Input> {
-    unsafe fn destroy_with(&mut self, input: Input);
+    unsafe fn destroy_with(&mut self, input: &mut Input);
 }
 
 pub fn bytes_to_string(string: *const std::ffi::c_char) -> String {
@@ -30,4 +30,12 @@ pub fn total_size<T>(slices: &[&[T]]) -> usize {
         .iter()
         .map(|&slice| std::mem::size_of_val(slice))
         .sum()
+}
+
+pub fn load_image_from_file(filename: &str) -> image::RgbaImage {
+    image::io::Reader::open(filename)
+        .expect("Failed to open image file")
+        .decode()
+        .expect("Failed to read image from file")
+        .into_rgba8()
 }

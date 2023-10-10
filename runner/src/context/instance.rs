@@ -9,7 +9,7 @@ use winit::window::Window;
 
 use crate::util::{self, Destroy};
 
-use super::{features::Features, queue, surface, validator::Validator};
+use super::{features, physical_device::PhysicalDevice, queue, surface, validator::Validator};
 
 mod conf {
     pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 0);
@@ -68,7 +68,7 @@ impl Instance {
     pub fn get_physical_device_and_info(
         &self,
         surface: &surface::Handle,
-    ) -> (vk::PhysicalDevice, queue::Families, surface::Config) {
+    ) -> (PhysicalDevice, queue::Families, surface::Config) {
         let all_devices = unsafe {
             self.enumerate_physical_devices()
                 .expect("Failed to enumerate physical devices")
@@ -83,7 +83,8 @@ impl Instance {
             .into_iter()
             .filter(|&physical_device| {
                 self.has_required_device_extensions(physical_device)
-                    && Features::get_supported(self, physical_device).supports_requirements()
+                    && features::Features::get_supported(self, physical_device)
+                        .supports_requirements()
             })
             .filter_map(|physical_device| {
                 queue::Families::find(self, physical_device, surface)
@@ -100,7 +101,7 @@ impl Instance {
             .expect("Failed to find a suitable physical device");
 
         (
-            physical_device,
+            PhysicalDevice::new(self, physical_device),
             queue_families,
             surface_config_options.get_optimal(),
         )
@@ -128,8 +129,8 @@ impl Instance {
 }
 
 impl Destroy<()> for Instance {
-    unsafe fn destroy_with(&mut self, _: ()) {
-        self.validator.destroy_with(());
+    unsafe fn destroy_with(&mut self, input: &mut ()) {
+        self.validator.destroy_with(input);
         self.instance.destroy_instance(None);
     }
 }

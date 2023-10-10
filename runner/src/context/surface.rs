@@ -8,7 +8,7 @@ use winit::{platform::windows::WindowExtWindows, window::Window};
 
 use crate::util::Destroy;
 
-use super::instance::Instance;
+use super::{instance::Instance, physical_device::PhysicalDevice};
 
 pub mod conf {
     use ash::vk;
@@ -52,9 +52,9 @@ impl Surface {
         Self { handle, config }
     }
 
-    pub fn refresh_capabilities(&mut self, physical_device: vk::PhysicalDevice) -> bool {
+    pub fn refresh_capabilities(&mut self, physical_device: &PhysicalDevice) -> bool {
         self.config
-            .update_with(&self.get_capabilities(physical_device));
+            .update_with(&self.get_capabilities(**physical_device));
         self.config.valid_extent()
     }
 }
@@ -190,7 +190,7 @@ impl Config {
 }
 
 impl Destroy<()> for Surface {
-    unsafe fn destroy_with(&mut self, input: ()) {
+    unsafe fn destroy_with(&mut self, input: &mut ()) {
         self.handle.destroy_with(input);
     }
 }
@@ -209,7 +209,7 @@ impl DerefMut for Surface {
 }
 
 impl Destroy<()> for Handle {
-    unsafe fn destroy_with(&mut self, _: ()) {
+    unsafe fn destroy_with(&mut self, _: &mut ()) {
         self.loader.destroy_surface(self.surface, None);
     }
 }

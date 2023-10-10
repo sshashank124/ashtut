@@ -15,8 +15,8 @@ pub struct UniformObjects {
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
 pub struct Vertex {
-    pub position: Vec2,
-    pub color: Vec3,
+    pub position: Vec3,
+    pub tex_coord: Vec2,
 }
 unsafe impl bytemuck::Zeroable for Vertex {}
 unsafe impl bytemuck::Pod for Vertex {}
@@ -32,10 +32,10 @@ unsafe impl bytemuck::Zeroable for ModelViewProjection {}
 unsafe impl bytemuck::Pod for ModelViewProjection {}
 
 impl Vertex {
-    pub const fn new(position: [f32; 2], color: [f32; 3]) -> Self {
+    pub const fn new(position: [f32; 3], tex_coord: [f32; 2]) -> Self {
         Self {
-            position: Vec2::from_array(position),
-            color: Vec3::from_array(color),
+            position: Vec3::from_array(position),
+            tex_coord: Vec2::from_array(tex_coord),
         }
     }
 }

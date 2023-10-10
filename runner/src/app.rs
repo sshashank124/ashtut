@@ -132,7 +132,7 @@ impl Drop for App {
         unsafe {
             self.ctx.wait_idle();
             self.render_pipeline.destroy_with(&mut self.ctx);
-            self.ctx.destroy_with(());
+            self.ctx.destroy_with(&mut ());
         }
     }
 }

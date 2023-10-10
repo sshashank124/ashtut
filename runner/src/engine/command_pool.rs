@@ -63,8 +63,8 @@ impl CommandPool {
     }
 }
 
-impl<'a> Destroy<&'a ash::Device> for CommandPool {
-    unsafe fn destroy_with(&mut self, device: &'a ash::Device) {
+impl Destroy<ash::Device> for CommandPool {
+    unsafe fn destroy_with(&mut self, device: &mut ash::Device) {
         device.destroy_command_pool(self.pool, None);
     }
 }

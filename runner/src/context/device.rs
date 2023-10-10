@@ -12,6 +12,7 @@ use super::{
     features::Features,
     gpu_alloc,
     instance::Instance,
+    physical_device::PhysicalDevice,
     queue::{Families, Queues},
 };
 
@@ -34,11 +35,7 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new(
-        instance: &Instance,
-        physical_device: vk::PhysicalDevice,
-        families: &Families,
-    ) -> Self {
+    pub fn new(instance: &Instance, physical_device: &PhysicalDevice, families: &Families) -> Self {
         let mut required_features = Features::required();
 
         let queue_create_infos = Queues::create_infos(families);
@@ -50,7 +47,7 @@ impl Device {
 
         let device = unsafe {
             instance
-                .create_device(physical_device, &create_info, None)
+                .create_device(**physical_device, &create_info, None)
                 .expect("Failed to create logical device")
         };
 
@@ -59,7 +56,7 @@ impl Device {
         let allocator_create_info = gpu_alloc::AllocatorCreateDesc {
             instance: (*instance).clone(),
             device: device.clone(),
-            physical_device,
+            physical_device: **physical_device,
             debug_settings: Default::default(),
             buffer_device_address: false,
             allocation_sizes: Default::default(),
@@ -116,7 +113,7 @@ impl Device {
 }
 
 impl Destroy<()> for Device {
-    unsafe fn destroy_with(&mut self, _: ()) {
+    unsafe fn destroy_with(&mut self, _: &mut ()) {
         ManuallyDrop::drop(&mut self.allocator);
         self.device.destroy_device(None);
     }
