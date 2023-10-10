@@ -36,8 +36,8 @@ impl App {
             transforms: shared::ModelViewProjection::new(
                 glam::Mat4::default(),
                 glam::Mat4::look_at_rh(
-                    glam::vec3(0.0, -2.0, 1.0),
-                    glam::vec3(0.0, 0.0, 0.0),
+                    glam::vec3(0.0, -2.0, 2.0),
+                    glam::vec3(0.0, 0.0, 0.2),
                     glam::vec3(0.0, 0.0, 1.0),
                 ),
                 glam::Mat4::perspective_rh(

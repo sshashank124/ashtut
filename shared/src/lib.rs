@@ -32,10 +32,10 @@ unsafe impl bytemuck::Zeroable for ModelViewProjection {}
 unsafe impl bytemuck::Pod for ModelViewProjection {}
 
 impl Vertex {
-    pub const fn new(position: [f32; 3], tex_coord: [f32; 2]) -> Self {
+    pub const fn new(position: &[f32], tex_coord: &[f32]) -> Self {
         Self {
-            position: Vec3::from_array(position),
-            tex_coord: Vec2::from_array(tex_coord),
+            position: Vec3::from_slice(position),
+            tex_coord: Vec2::from_slice(tex_coord),
         }
     }
 }
