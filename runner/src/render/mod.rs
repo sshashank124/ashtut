@@ -14,7 +14,7 @@ use crate::{
         buffer::Buffer, command_builder::CommandBuilder, command_pool::CommandPool,
         context::Context, image::Image, sampled_image::SampledImage, Destroy,
     },
-    model::mesh::Mesh,
+    model::Model,
 };
 
 use self::{
@@ -22,40 +22,13 @@ use self::{
     sync_state::SyncState, uniforms::Uniforms,
 };
 
-mod data {
-    /*
-    use shared::Vertex;
-    pub const VERTICES_DATA: &[Vertex] = &[
-        // Plane 1
-        Vertex::new(&[-0.5, -0.5, 0.0], &[1.0, 0.0]),
-        Vertex::new(&[0.5, -0.5, 0.0], &[0.0, 0.0]),
-        Vertex::new(&[0.5, 0.5, 0.0], &[0.0, 1.0]),
-        Vertex::new(&[-0.5, 0.5, 0.0], &[1.0, 1.0]),
-        // Plane 2
-        Vertex::new(&[-0.5, -0.5, -0.2], &[1.0, 0.0]),
-        Vertex::new(&[0.5, -0.5, -0.2], &[0.0, 0.0]),
-        Vertex::new(&[0.5, 0.5, -0.2], &[0.0, 1.0]),
-        Vertex::new(&[-0.5, 0.5, -0.2], &[1.0, 1.0]),
-    ];
-    pub fn indices_offset() -> u64 {
-        std::mem::size_of_val(VERTICES_DATA) as u64
-    }
-    pub const INDICES_DATA: &[u32] = &[
-        0, 1, 2, 0, 2, 3, // Plane 1
-        4, 5, 6, 4, 6, 7, // Plane 2
-    ];
-    */
-    pub const OBJ_FILE: &str = "assets/models/viking_room.obj";
-    pub const TEXTURE_FILE: &str = "assets/textures/viking_room.png";
-}
-
 pub struct Renderer {
     pass: Pass,
     pipeline: Pipeline,
     descriptors: Descriptors,
 
     // model
-    mesh: Mesh,
+    model: Model,
 
     // drawing
     command_pools: Vec<CommandPool>,
@@ -84,12 +57,12 @@ impl Renderer {
 
         let (command_pools, command_buffers) = Self::create_command_pools_and_buffers(ctx);
 
-        let mesh = Mesh::load_from_file(data::OBJ_FILE);
+        let model = Model::demo_viking_room();
 
         let mut setup = CommandBuilder::new(ctx, ctx.device.queues.graphics());
 
-        let vertex_index_buffer = Self::init_vertex_index_buffer(ctx, &mut setup, &mesh);
-        let texture = Self::init_texture(ctx, &mut setup);
+        let vertex_index_buffer = Self::init_vertex_index_buffer(ctx, &mut setup, &model);
+        let texture = Self::init_texture(ctx, &mut setup, &model);
 
         let uniforms = Uniforms::create(ctx);
         descriptors.bind_descriptors(ctx, &uniforms, &texture);
@@ -105,7 +78,7 @@ impl Renderer {
             pipeline,
             descriptors,
 
-            mesh,
+            model,
 
             command_pools,
             command_buffers,
@@ -142,11 +115,11 @@ impl Renderer {
     fn init_vertex_index_buffer(
         ctx: &mut Context,
         setup: &mut CommandBuilder,
-        mesh: &Mesh,
+        model: &Model,
     ) -> Buffer {
         let data_sources = &[
-            bytemuck::cast_slice(&mesh.vertices),
-            bytemuck::cast_slice(&mesh.indices),
+            bytemuck::cast_slice(&model.mesh.vertices),
+            bytemuck::cast_slice(&model.mesh.indices),
         ];
         let create_info = vk::BufferCreateInfo::builder()
             .usage(vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER);
@@ -160,14 +133,8 @@ impl Renderer {
         )
     }
 
-    fn init_texture(ctx: &mut Context, setup: &mut CommandBuilder) -> SampledImage {
-        let image = Image::create_from_image(
-            ctx,
-            setup,
-            "Texture",
-            &crate::util::load_image_from_file(data::TEXTURE_FILE),
-        );
-
+    fn init_texture(ctx: &mut Context, setup: &mut CommandBuilder, model: &Model) -> SampledImage {
+        let image = Image::create_from_image(ctx, setup, "Texture", &model.texture);
         SampledImage::from_image(ctx, image)
     }
 
@@ -301,7 +268,7 @@ impl Renderer {
             ctx.cmd_bind_index_buffer(
                 command_buffer,
                 *self.vertex_index_buffer,
-                self.mesh.vertex_data_size() as u64,
+                self.model.mesh.vertex_data_size() as u64,
                 vk::IndexType::UINT32,
             );
 
@@ -315,7 +282,14 @@ impl Renderer {
                 &[],
             );
 
-            ctx.cmd_draw_indexed(command_buffer, self.mesh.indices.len() as u32, 1, 0, 0, 0);
+            ctx.cmd_draw_indexed(
+                command_buffer,
+                self.model.mesh.indices.len() as u32,
+                1,
+                0,
+                0,
+                0,
+            );
 
             ctx.cmd_end_render_pass(command_buffer);
 

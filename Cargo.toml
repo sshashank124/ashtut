@@ -9,18 +9,18 @@ repository = "https://github.com/sshashank124/tsunami"
 
 [profile.release]
 opt-level = 3
-codegen-units = 1
+codegen-units = 16
 lto = "fat"
 
 [profile.release.build-override]
 opt-level = 3
-codegen-units = 1
+codegen-units = 16
 
 [profile.dev]
 opt-level = 3
-codegen-units = 16
+codegen-units = 64
 lto = "thin"
 
 [profile.dev.build-override]
 opt-level = 3
-codegen-units = 16
+codegen-units = 64

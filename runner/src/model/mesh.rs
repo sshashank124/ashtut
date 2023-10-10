@@ -5,17 +5,32 @@ pub struct Mesh {
     pub indices: Vec<u32>,
 }
 
+mod data {
+    pub const INDICES: &[u32] = &[
+        0, 1, 2, 0, 2, 3, // Plane 1
+        4, 5, 6, 4, 6, 7, // Plane 2
+    ];
+    pub const POSITIONS: &[f32] = &[
+        -0.5, -0.5, 0.0, 0.5, -0.5, 0.0, 0.5, 0.5, 0.0, -0.5, 0.5, 0.0, // Plane 1
+        -0.5, -0.5, -0.2, 0.5, -0.5, -0.2, 0.5, 0.5, -0.2, -0.5, 0.5, -0.2, // Plane 2
+    ];
+    pub const TEX_COORDS: &[f32] = &[
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, // Plane 1
+        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, // Plane 2
+    ];
+}
+
 impl Mesh {
-    pub fn load_from_file(file_name: &str) -> Self {
+    pub fn from_file(file_name: &str) -> Self {
         let mesh = &tobj::load_obj(file_name, &tobj::GPU_LOAD_OPTIONS)
             .expect("Failed to load OBJ file")
             .0[0]
             .mesh;
 
-        Self::from_flat(&mesh.indices, &mesh.positions, &mesh.texcoords)
+        Self::from_slices(&mesh.indices, &mesh.positions, &mesh.texcoords)
     }
 
-    pub fn from_flat(indices: &[u32], positions: &[f32], tex_coords: &[f32]) -> Self {
+    pub fn from_slices(indices: &[u32], positions: &[f32], tex_coords: &[f32]) -> Self {
         assert_eq!(positions.len() / 3, tex_coords.len() / 2);
 
         let vertices = positions
@@ -35,5 +50,9 @@ impl Mesh {
 
     pub fn vertex_data_size(&self) -> usize {
         std::mem::size_of_val(self.vertices.as_slice())
+    }
+
+    pub fn demo_2_planes() -> Self {
+        Self::from_slices(data::INDICES, data::POSITIONS, data::TEX_COORDS)
     }
 }
