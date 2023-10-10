@@ -4,7 +4,7 @@ use ash::vk;
 
 use shared::{bytemuck, Vertex};
 
-use crate::util::Descriptions;
+use super::Descriptions;
 
 impl Descriptions for Vertex {
     type BindingType = vk::VertexInputBindingDescription;

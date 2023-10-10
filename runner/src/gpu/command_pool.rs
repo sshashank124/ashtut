@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use ash::vk;
 
-use crate::util::Destroy;
+use super::Destroy;
 
 pub struct CommandPool {
     pool: vk::CommandPool,

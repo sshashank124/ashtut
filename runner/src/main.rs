@@ -9,11 +9,9 @@
 )]
 
 mod app;
-mod context;
-mod engine;
+mod gpu;
 mod render;
 mod util;
-mod vertex;
 
 use winit::event_loop::EventLoop;
 

@@ -2,12 +2,12 @@ use std::ops::{Deref, DerefMut};
 
 use ash::vk;
 
-use crate::{
+use super::{
+    buffer::Buffer,
+    command_builder::CommandBuilder,
     context::{gpu_alloc, Context},
-    util::Destroy,
+    Destroy,
 };
-
-use super::{buffer::Buffer, command_builder::CommandBuilder};
 
 #[allow(clippy::module_name_repetitions)]
 pub type ColorImage = Image<Color>;

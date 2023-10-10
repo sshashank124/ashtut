@@ -9,13 +9,9 @@ use ash::vk;
 
 use shared::{bytemuck, UniformObjects};
 
-use crate::{
-    context::Context,
-    engine::{
-        buffer::Buffer, command_builder::CommandBuilder, command_pool::CommandPool, image::Image,
-        sampled_image::SampledImage,
-    },
-    util::{self, Destroy},
+use crate::gpu::{
+    buffer::Buffer, command_builder::CommandBuilder, command_pool::CommandPool, context::Context,
+    image::Image, sampled_image::SampledImage, Destroy,
 };
 
 use self::{
@@ -147,7 +143,7 @@ impl Renderer {
             ctx,
             setup,
             "Texture",
-            &util::load_image_from_file(data::TEXTURE_FILE),
+            &crate::util::load_image_from_file(data::TEXTURE_FILE),
         );
 
         SampledImage::from_image(ctx, image)
@@ -206,7 +202,7 @@ impl Renderer {
         let submit_infos = [vk::SubmitInfo::builder()
             .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
             .wait_semaphores(wait_on)
-            .command_buffers(&self.command_buffers[util::solo_range(image_index)])
+            .command_buffers(&self.command_buffers[crate::util::solo_range(image_index)])
             .signal_semaphores(signal_to)
             .build()];
 

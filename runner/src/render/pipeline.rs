@@ -3,10 +3,7 @@ use std::ops::Deref;
 use ash::vk;
 use shared::Vertex;
 
-use crate::{
-    context::Context,
-    util::{Descriptions, Destroy},
-};
+use crate::gpu::{context::Context, Descriptions, Destroy};
 
 mod conf {
     pub const SHADER_FILE: &str = env!("raster.spv");

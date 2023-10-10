@@ -12,9 +12,9 @@ pub use gpu_allocator::vulkan as gpu_alloc;
 
 use winit::window::Window;
 
-use crate::util::Destroy;
-
 use self::{device::Device, instance::Instance, physical_device::PhysicalDevice, surface::Surface};
+
+use super::Destroy;
 
 pub struct Context {
     pub instance: Instance,

@@ -2,10 +2,10 @@ use std::ops::Deref;
 
 use ash::vk;
 
-use crate::{
+use crate::gpu::{
     context::Context,
-    engine::image::{self, Props},
-    util::Destroy,
+    image::{self, Props},
+    Destroy,
 };
 
 pub struct Pass {

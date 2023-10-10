@@ -7,7 +7,10 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::{context::Context, render, util::Destroy};
+use crate::{
+    gpu::{context::Context, Destroy},
+    render,
+};
 
 mod conf {
     pub const WINDOW_TITLE: &str = "Learning Vulkan & Ash";

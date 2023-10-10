@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use ash::vk;
 
-use crate::{context::Context, util::Destroy};
+use super::{context::Context, Destroy};
 
 pub struct Sampler {
     sampler: vk::Sampler,

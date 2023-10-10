@@ -1,9 +1,6 @@
 use ash::vk;
 
-use crate::{
-    context::Context,
-    util::{self, Destroy},
-};
+use crate::gpu::{context::Context, Destroy};
 
 pub mod conf {
     pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
@@ -37,15 +34,15 @@ impl SyncState {
     }
 
     pub fn image_available_semaphore(&self) -> &[vk::Semaphore] {
-        &self.image_available[util::solo_range(self.current_frame)]
+        &self.image_available[crate::util::solo_range(self.current_frame)]
     }
 
     pub fn render_finished_semaphore(&self) -> &[vk::Semaphore] {
-        &self.render_finished[util::solo_range(self.current_frame)]
+        &self.render_finished[crate::util::solo_range(self.current_frame)]
     }
 
     pub fn in_flight_fence(&self) -> &[vk::Fence] {
-        &self.in_flight[util::solo_range(self.current_frame)]
+        &self.in_flight[crate::util::solo_range(self.current_frame)]
     }
 
     pub fn advance(&mut self) {

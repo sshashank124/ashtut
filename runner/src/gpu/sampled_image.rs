@@ -1,6 +1,4 @@
-use crate::{context::Context, util::Destroy};
-
-use super::{image::ColorImage, sampler::Sampler};
+use super::{context::Context, image::ColorImage, sampler::Sampler, Destroy};
 
 pub struct SampledImage {
     pub image: ColorImage,

@@ -6,14 +6,13 @@ use std::{
 
 use ash::vk;
 
-use crate::util::Destroy;
-
 use super::{
     features::Features,
     gpu_alloc,
     instance::Instance,
     physical_device::PhysicalDevice,
     queue::{Families, Queues},
+    Destroy,
 };
 
 pub mod conf {

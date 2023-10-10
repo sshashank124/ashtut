@@ -1,10 +1,6 @@
 use ash::{extensions::khr, vk};
 
-use crate::{
-    context::Context,
-    engine::{command_builder::CommandBuilder, image::DepthImage},
-    util::Destroy,
-};
+use crate::gpu::{command_builder::CommandBuilder, context::Context, image::DepthImage, Destroy};
 
 use super::pass::Pass;
 

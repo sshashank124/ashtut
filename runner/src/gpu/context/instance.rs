@@ -7,9 +7,9 @@ use std::{
 use ash::vk;
 use winit::window::Window;
 
-use crate::util::{self, Destroy};
-
-use super::{features, physical_device::PhysicalDevice, queue, surface, validator::Validator};
+use super::{
+    features, physical_device::PhysicalDevice, queue, surface, validator::Validator, Destroy,
+};
 
 mod conf {
     pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 0);
@@ -116,14 +116,14 @@ impl Instance {
             self.enumerate_device_extension_properties(physical_device)
                 .expect("Failed to get device extension properties")
                 .into_iter()
-                .map(|e| util::bytes_to_string(e.extension_name.as_ptr()))
+                .map(|e| crate::util::bytes_to_string(e.extension_name.as_ptr()))
                 .collect()
         };
 
         super::device::conf::REQUIRED_EXTENSIONS
             .iter()
             .copied()
-            .map(util::bytes_to_string)
+            .map(crate::util::bytes_to_string)
             .all(|ref required_extension| available_extensions.contains(required_extension))
     }
 }

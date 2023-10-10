@@ -1,6 +1,6 @@
 use ash::vk;
 
-use crate::{context::Context, engine::sampled_image::SampledImage, util::Destroy};
+use crate::gpu::{context::Context, sampled_image::SampledImage, Destroy};
 
 use super::uniforms::Uniforms;
 

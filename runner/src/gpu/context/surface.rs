@@ -6,9 +6,7 @@ use std::{
 use ash::{extensions::khr, vk};
 use winit::{platform::windows::WindowExtWindows, window::Window};
 
-use crate::util::Destroy;
-
-use super::{instance::Instance, physical_device::PhysicalDevice};
+use super::{instance::Instance, physical_device::PhysicalDevice, Destroy};
 
 pub mod conf {
     use ash::vk;

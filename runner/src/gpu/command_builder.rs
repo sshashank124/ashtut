@@ -1,10 +1,9 @@
 use ash::vk;
 
-use super::command_pool::CommandPool;
-
-use crate::{
+use super::{
+    command_pool::CommandPool,
     context::{queue::Queue, Context},
-    util::Destroy,
+    Destroy,
 };
 
 pub struct CommandBuilder {

@@ -4,12 +4,11 @@ use ash::vk;
 
 use shared::bytemuck;
 
-use crate::{
+use super::{
+    command_builder::CommandBuilder,
     context::{gpu_alloc, Context},
-    util::{self, Destroy},
+    Destroy,
 };
-
-use super::command_builder::CommandBuilder;
 
 pub struct Buffer {
     buffer: vk::Buffer,
@@ -60,7 +59,7 @@ impl Buffer {
         mut info: vk::BufferCreateInfo,
         data_sources: &[&[u8]],
     ) -> Self {
-        info.size = util::total_size(data_sources) as u64;
+        info.size = crate::util::total_size(data_sources) as u64;
         let mut buffer = Self::create(ctx, name, info, gpu_allocator::MemoryLocation::CpuToGpu);
         buffer.fill_from_sources(data_sources);
         buffer
@@ -84,7 +83,7 @@ impl Buffer {
         );
 
         info.usage |= vk::BufferUsageFlags::TRANSFER_DST;
-        info.size = util::total_size(data_sources) as u64;
+        info.size = crate::util::total_size(data_sources) as u64;
         let mut buffer = Self::create(ctx, name, info, gpu_allocator::MemoryLocation::GpuOnly);
         buffer.record_copy_from(ctx, command_builder.command_buffer, &staging, info.size);
 
