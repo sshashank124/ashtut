@@ -26,15 +26,25 @@ use self::{
 mod data {
     use shared::Vertex;
     pub const VERTICES_DATA: &[Vertex] = &[
+        // Plane 1
         Vertex::new([-0.5, -0.5, 0.0], [1.0, 0.0]),
         Vertex::new([0.5, -0.5, 0.0], [0.0, 0.0]),
         Vertex::new([0.5, 0.5, 0.0], [0.0, 1.0]),
         Vertex::new([-0.5, 0.5, 0.0], [1.0, 1.0]),
+        // Plane 2
+        Vertex::new([-0.5, -0.5, -0.2], [1.0, 0.0]),
+        Vertex::new([0.5, -0.5, -0.2], [0.0, 0.0]),
+        Vertex::new([0.5, 0.5, -0.2], [0.0, 1.0]),
+        Vertex::new([-0.5, 0.5, -0.2], [1.0, 1.0]),
     ];
     pub fn indices_offset() -> u64 {
         std::mem::size_of_val(VERTICES_DATA) as u64
     }
-    pub const INDICES_DATA: &[u32] = &[0, 1, 2, 0, 2, 3];
+    pub const INDICES_DATA: &[u32] = &[
+        0, 1, 2, 0, 2, 3, // Plane 1
+        4, 5, 6, 4, 6, 7, // Plane 2
+    ];
+    pub const TEXTURE_FILE: &str = "assets/textures/statue.jpg";
 }
 
 pub struct Renderer {
@@ -72,26 +82,16 @@ impl Renderer {
         let mut setup = CommandBuilder::new(ctx, ctx.device.queues.graphics());
 
         let vertex_index_buffer = Self::init_vertex_index_buffer(ctx, &mut setup);
-
-        let texture = {
-            let image = Image::create_from_image(
-                ctx,
-                &mut setup,
-                "Texture",
-                &util::load_image_from_file("assets/textures/statue.jpg"),
-            );
-
-            SampledImage::create_with_sampler(ctx, image)
-        };
-
-        setup.finish(ctx);
+        let texture = Self::init_texture(ctx, &mut setup);
 
         let uniforms = Uniforms::create(ctx);
         descriptors.bind_descriptors(ctx, &uniforms, &texture);
 
         let state = SyncState::create(ctx);
 
-        let swapchain = Swapchain::create(ctx, &pass);
+        let swapchain = Swapchain::create(ctx, &mut setup, &pass);
+
+        setup.finish(ctx);
 
         Self {
             pass,
@@ -140,6 +140,17 @@ impl Renderer {
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
         Buffer::create_with_staged_data(ctx, setup, "Vertex Buffer", *create_info, data_sources)
+    }
+
+    fn init_texture(ctx: &mut Context, setup: &mut CommandBuilder) -> SampledImage {
+        let image = Image::create_from_image(
+            ctx,
+            setup,
+            "Texture",
+            &util::load_image_from_file(data::TEXTURE_FILE),
+        );
+
+        SampledImage::from_image(ctx, image)
     }
 
     pub fn render(&mut self, ctx: &Context, uniforms: &UniformObjects) -> Result<(), Error> {
@@ -205,21 +216,22 @@ impl Renderer {
         }
     }
 
-    pub fn recreate(&mut self, ctx: &mut Context) {
-        unsafe {
-            self.swapchain.destroy_with(ctx);
-        }
-        self.swapchain = Swapchain::create(ctx, &self.pass);
-    }
-
     fn record_commands_for_frame(&self, ctx: &Context, image_index: usize) {
         let command_buffer = self.command_buffers[image_index];
 
-        let clear_values = [vk::ClearValue {
-            color: vk::ClearColorValue {
-                float32: [0.0, 0.0, 0.0, 0.0],
+        let clear_values = [
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 0.0],
+                },
             },
-        }];
+            vk::ClearValue {
+                depth_stencil: vk::ClearDepthStencilValue {
+                    depth: 1.0,
+                    stencil: 0,
+                },
+            },
+        ];
 
         let pass_info_template = vk::RenderPassBeginInfo::builder()
             .render_pass(*self.pass)
@@ -292,6 +304,15 @@ impl Renderer {
             ctx.end_command_buffer(command_buffer)
                 .expect("Failed to end recording command buffer");
         }
+    }
+
+    pub fn recreate(&mut self, ctx: &mut Context) {
+        unsafe {
+            self.swapchain.destroy_with(ctx);
+        }
+        let mut setup = CommandBuilder::new(ctx, ctx.device.queues.graphics());
+        self.swapchain = Swapchain::create(ctx, &mut setup, &self.pass);
+        setup.finish(ctx);
     }
 }
 

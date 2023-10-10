@@ -1,14 +1,14 @@
 use crate::{context::Context, util::Destroy};
 
-use super::{image::Image, sampler::Sampler};
+use super::{image::ColorImage, sampler::Sampler};
 
 pub struct SampledImage {
-    pub image: Image,
+    pub image: ColorImage,
     pub sampler: Sampler,
 }
 
 impl SampledImage {
-    pub fn create_with_sampler(ctx: &Context, image: Image) -> Self {
+    pub fn from_image(ctx: &Context, image: ColorImage) -> Self {
         let sampler = Sampler::create(ctx);
         Self { image, sampler }
     }

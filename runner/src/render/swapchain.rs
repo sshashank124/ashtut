@@ -1,6 +1,10 @@
 use ash::{extensions::khr, vk};
 
-use crate::{context::Context, util::Destroy};
+use crate::{
+    context::Context,
+    engine::{command_builder::CommandBuilder, image::DepthImage},
+    util::Destroy,
+};
 
 use super::pass::Pass;
 
@@ -8,11 +12,12 @@ pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
     pub loader: khr::Swapchain,
     pub image_views: Vec<vk::ImageView>,
+    pub depth_image: DepthImage,
     pub framebuffers: Vec<vk::Framebuffer>,
 }
 
 impl Swapchain {
-    pub fn create(ctx: &mut Context, pass: &Pass) -> Self {
+    pub fn create(ctx: &mut Context, setup: &mut CommandBuilder, pass: &Pass) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(**ctx.surface)
             .min_image_count(ctx.surface.config.image_count)
@@ -44,12 +49,16 @@ impl Swapchain {
         ctx.surface.config.image_count = images.len() as u32;
 
         let image_views = Self::create_image_views(ctx, &images);
-        let framebuffers = Self::create_framebuffers(ctx, **pass, &image_views);
+
+        let depth_image = DepthImage::init(ctx, setup, "Z-Buffer");
+
+        let framebuffers = Self::create_framebuffers(ctx, **pass, &image_views, &depth_image);
 
         Self {
             swapchain,
             loader,
             image_views,
+            depth_image,
             framebuffers,
         }
     }
@@ -79,11 +88,12 @@ impl Swapchain {
         ctx: &Context,
         pass: vk::RenderPass,
         image_views: &[vk::ImageView],
+        depth_image: &DepthImage,
     ) -> Vec<vk::Framebuffer> {
         image_views
             .iter()
             .map(|&image_view| {
-                let attachments = [image_view];
+                let attachments = [image_view, depth_image.view];
                 let create_info = vk::FramebufferCreateInfo::builder()
                     .render_pass(pass)
                     .attachments(&attachments)
@@ -134,6 +144,7 @@ impl Destroy<Context> for Swapchain {
         for &framebuffer in &self.framebuffers {
             ctx.destroy_framebuffer(framebuffer, None);
         }
+        self.depth_image.destroy_with(ctx);
         for &image_view in &self.image_views {
             ctx.destroy_image_view(image_view, None);
         }
