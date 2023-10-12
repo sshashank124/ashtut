@@ -36,8 +36,6 @@ impl Uniforms {
 
 impl Destroy<Context> for Uniforms {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        for buffer in &mut self.buffers {
-            buffer.destroy_with(ctx);
-        }
+        self.buffers.destroy_with(ctx);
     }
 }

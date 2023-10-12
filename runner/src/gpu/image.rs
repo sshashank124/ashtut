@@ -1,14 +1,11 @@
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 
 use ash::vk;
 
-use super::{
-    buffer::Buffer,
-    command_builder::CommandBuilder,
-    context::{gpu_alloc, Context},
-    Destroy,
-};
+use super::{alloc, buffer::Buffer, context::Context, scope::TempScope, Destroy};
 
+#[allow(clippy::module_name_repetitions)]
+pub type HdrImage = Image<HdrColor>;
 #[allow(clippy::module_name_repetitions)]
 pub type ColorImage = Image<Color>;
 #[allow(clippy::module_name_repetitions)]
@@ -19,6 +16,16 @@ pub trait Props {
     const ASPECT_FLAGS: vk::ImageAspectFlags;
     const FINAL_LAYOUT: vk::ImageLayout;
     fn usage() -> vk::ImageUsageFlags;
+}
+
+pub struct HdrColor;
+impl Props for HdrColor {
+    const FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
+    const ASPECT_FLAGS: vk::ImageAspectFlags = vk::ImageAspectFlags::COLOR;
+    const FINAL_LAYOUT: vk::ImageLayout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
+    fn usage() -> vk::ImageUsageFlags {
+        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED
+    }
 }
 
 pub struct Color;
@@ -43,9 +50,9 @@ impl Props for Depth {
 
 pub struct Image<T> {
     image: vk::Image,
-    allocation: Option<gpu_alloc::Allocation>,
+    allocation: Option<alloc::Allocation>,
     pub view: vk::ImageView,
-    _marker: std::marker::PhantomData<T>,
+    _p: std::marker::PhantomData<T>,
 }
 
 impl<T: Props> Image<T> {
@@ -74,12 +81,12 @@ impl<T: Props> Image<T> {
             .subresource_range(Self::subresource_range());
 
         let requirements = unsafe { ctx.get_image_memory_requirements(image) };
-        let allocation_create_info = gpu_alloc::AllocationCreateDesc {
+        let allocation_create_info = alloc::AllocationCreateDesc {
             name,
             requirements,
             location: gpu_allocator::MemoryLocation::GpuOnly,
             linear: false,
-            allocation_scheme: gpu_alloc::AllocationScheme::GpuAllocatorManaged,
+            allocation_scheme: alloc::AllocationScheme::GpuAllocatorManaged,
         };
 
         let allocation = ctx
@@ -102,7 +109,7 @@ impl<T: Props> Image<T> {
             image,
             allocation: Some(allocation),
             view,
-            _marker: std::marker::PhantomData,
+            _p: std::marker::PhantomData,
         }
     }
 
@@ -119,7 +126,7 @@ impl<T: Props> Image<T> {
     fn transition_layout(
         &self,
         ctx: &Context,
-        command_builder: &mut CommandBuilder,
+        command_buffer: vk::CommandBuffer,
         layout_transition: [vk::ImageLayout; 2],
         stage_transition: [vk::PipelineStageFlags; 2],
         access_transition: [vk::AccessFlags; 2],
@@ -139,7 +146,7 @@ impl<T: Props> Image<T> {
 
         unsafe {
             ctx.cmd_pipeline_barrier(
-                command_builder.command_buffer,
+                command_buffer,
                 stage_transition[0],
                 stage_transition[1],
                 vk::DependencyFlags::empty(),
@@ -154,7 +161,7 @@ impl<T: Props> Image<T> {
 impl ColorImage {
     pub fn create_from_image(
         ctx: &mut Context,
-        command_builder: &mut CommandBuilder,
+        scope: &mut TempScope,
         name: &str,
         img: &image::RgbaImage,
     ) -> Self {
@@ -173,11 +180,11 @@ impl ColorImage {
         let info = vk::ImageCreateInfo::builder().extent(extent);
         let mut image = Self::create(ctx, name, &info);
 
-        image.transition_layout_for_transfer(ctx, command_builder);
-        image.record_copy_from(ctx, command_builder.command_buffer, &staging, extent);
-        image.transition_layout_ready_to_read(ctx, command_builder);
+        image.transition_layout_for_transfer(ctx, scope.commands.buffer);
+        image.record_copy_from(ctx, scope.commands.buffer, &staging, extent);
+        image.transition_layout_ready_to_read(ctx, scope.commands.buffer);
 
-        command_builder.add_for_destruction(staging);
+        scope.add_resource(staging);
 
         image
     }
@@ -210,10 +217,10 @@ impl ColorImage {
         }
     }
 
-    fn transition_layout_for_transfer(&self, ctx: &Context, command_builder: &mut CommandBuilder) {
+    fn transition_layout_for_transfer(&self, ctx: &Context, command_buffer: vk::CommandBuffer) {
         self.transition_layout(
             ctx,
-            command_builder,
+            command_buffer,
             [
                 vk::ImageLayout::UNDEFINED,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -226,10 +233,10 @@ impl ColorImage {
         );
     }
 
-    fn transition_layout_ready_to_read(&self, ctx: &Context, command_builder: &mut CommandBuilder) {
+    fn transition_layout_ready_to_read(&self, ctx: &Context, command_buffer: vk::CommandBuffer) {
         self.transition_layout(
             ctx,
-            command_builder,
+            command_buffer,
             [vk::ImageLayout::TRANSFER_DST_OPTIMAL, Color::FINAL_LAYOUT],
             [
                 vk::PipelineStageFlags::TRANSFER,
@@ -244,17 +251,17 @@ impl ColorImage {
 }
 
 impl DepthImage {
-    pub fn init(ctx: &mut Context, command_builder: &mut CommandBuilder, name: &str) -> Self {
+    pub fn init(ctx: &mut Context, scope: &mut TempScope, name: &str) -> Self {
         let info = vk::ImageCreateInfo::builder().extent(ctx.surface.config.extent.into());
         let depth_image = Self::create(ctx, name, &info);
-        depth_image.transition_layout_ready_for_use(ctx, command_builder);
+        depth_image.transition_layout_ready_for_use(ctx, scope.commands.buffer);
         depth_image
     }
 
-    fn transition_layout_ready_for_use(&self, ctx: &Context, command_builder: &mut CommandBuilder) {
+    fn transition_layout_ready_for_use(&self, ctx: &Context, command_buffer: vk::CommandBuffer) {
         self.transition_layout(
             ctx,
-            command_builder,
+            command_buffer,
             [vk::ImageLayout::UNDEFINED, Depth::FINAL_LAYOUT],
             [
                 vk::PipelineStageFlags::TOP_OF_PIPE,
@@ -285,11 +292,5 @@ impl<T> Deref for Image<T> {
     type Target = vk::Image;
     fn deref(&self) -> &Self::Target {
         &self.image
-    }
-}
-
-impl<T> DerefMut for Image<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.image
     }
 }

@@ -1,18 +1,14 @@
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 
 use ash::vk;
 
 use shared::bytemuck;
 
-use super::{
-    command_builder::CommandBuilder,
-    context::{gpu_alloc, Context},
-    Destroy,
-};
+use super::{alloc, context::Context, scope::TempScope, Destroy};
 
 pub struct Buffer {
     buffer: vk::Buffer,
-    allocation: Option<gpu_alloc::Allocation>,
+    allocation: Option<alloc::Allocation>,
 }
 
 impl Buffer {
@@ -28,12 +24,12 @@ impl Buffer {
         };
 
         let requirements = unsafe { ctx.get_buffer_memory_requirements(buffer) };
-        let allocation_create_info = gpu_alloc::AllocationCreateDesc {
+        let allocation_create_info = alloc::AllocationCreateDesc {
             name,
             requirements,
             location,
             linear: true,
-            allocation_scheme: gpu_alloc::AllocationScheme::GpuAllocatorManaged,
+            allocation_scheme: alloc::AllocationScheme::GpuAllocatorManaged,
         };
 
         let allocation = ctx
@@ -67,7 +63,7 @@ impl Buffer {
 
     pub fn create_with_staged_data(
         ctx: &mut Context,
-        command_builder: &mut CommandBuilder,
+        scope: &mut TempScope,
         name: &str,
         mut info: vk::BufferCreateInfo,
         data_sources: &[&[u8]],
@@ -85,9 +81,9 @@ impl Buffer {
         info.usage |= vk::BufferUsageFlags::TRANSFER_DST;
         info.size = crate::util::total_size(data_sources) as u64;
         let mut buffer = Self::create(ctx, name, info, gpu_allocator::MemoryLocation::GpuOnly);
-        buffer.record_copy_from(ctx, command_builder.command_buffer, &staging, info.size);
+        buffer.record_copy_from(ctx, scope.commands.buffer, &staging, info.size);
 
-        command_builder.add_for_destruction(staging);
+        scope.add_resource(staging);
 
         buffer
     }
@@ -145,11 +141,5 @@ impl Deref for Buffer {
     type Target = vk::Buffer;
     fn deref(&self) -> &Self::Target {
         &self.buffer
-    }
-}
-
-impl DerefMut for Buffer {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.buffer
     }
 }

@@ -8,8 +8,6 @@ mod validator;
 
 use std::ops::{Deref, DerefMut};
 
-pub use gpu_allocator::vulkan as gpu_alloc;
-
 use winit::window::Window;
 
 use self::{device::Device, instance::Instance, physical_device::PhysicalDevice, surface::Surface};

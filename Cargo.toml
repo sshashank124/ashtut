@@ -1,5 +1,5 @@
 [workspace]
-members = ["runner", "shared", "shaders/raster"]
+members = ["runner", "shared", "shaders/raster", "shaders/tonemap"]
 
 [workspace.package]
 version = "0.1.0"

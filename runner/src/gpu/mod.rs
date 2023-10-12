@@ -1,14 +1,22 @@
 pub mod buffer;
-pub mod command_builder;
-pub mod command_pool;
+pub mod commands;
 pub mod context;
 pub mod image;
 pub mod sampled_image;
 pub mod sampler;
+pub mod scope;
 pub mod vertex;
+
+pub use gpu_allocator::vulkan as alloc;
 
 pub trait Destroy<Input> {
     unsafe fn destroy_with(&mut self, input: &mut Input);
+}
+
+impl<T: Destroy<Input>, Input> Destroy<Input> for Vec<T> {
+    unsafe fn destroy_with(&mut self, input: &mut Input) {
+        self.iter_mut().for_each(|e| e.destroy_with(input));
+    }
 }
 
 pub trait Descriptions {

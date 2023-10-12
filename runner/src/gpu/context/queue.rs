@@ -78,7 +78,7 @@ impl Families {
             .collect::<Vec<_>>();
 
         let mut found_indices = FamiliesInfo::default();
-        for &(index, queue_family) in &valid_queue_families {
+        for (index, queue_family) in valid_queue_families {
             let g = queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS);
             let c = queue_family.queue_flags.contains(vk::QueueFlags::COMPUTE);
             let t = queue_family.queue_flags.contains(vk::QueueFlags::TRANSFER);

@@ -11,8 +11,13 @@ use shared::{bytemuck, UniformObjects};
 
 use crate::{
     gpu::{
-        buffer::Buffer, command_builder::CommandBuilder, command_pool::CommandPool,
-        context::Context, image::Image, sampled_image::SampledImage, Destroy,
+        buffer::Buffer,
+        commands::Commands,
+        context::Context,
+        image::{HdrImage, Image},
+        sampled_image::SampledImage,
+        scope::{Scope, TempScope},
+        Destroy,
     },
     model::Model,
 };
@@ -22,6 +27,13 @@ use self::{
     sync_state::SyncState, uniforms::Uniforms,
 };
 
+mod conf {
+    pub const RENDER_RESOLUTION: ash::vk::Extent2D = ash::vk::Extent2D {
+        width: 1024,
+        height: 768,
+    };
+}
+
 pub struct Renderer {
     pass: Pass,
     pipeline: Pipeline,
@@ -30,9 +42,11 @@ pub struct Renderer {
     // model
     model: Model,
 
+    // off-screen render target
+    render_target: HdrImage,
+
     // drawing
-    command_pools: Vec<CommandPool>,
-    command_buffers: Vec<vk::CommandBuffer>,
+    render_scopes: Vec<Scope>,
 
     vertex_index_buffer: Buffer,
     texture: SampledImage,
@@ -55,23 +69,25 @@ impl Renderer {
         let descriptors = Descriptors::create(ctx);
         let pipeline = Pipeline::create(ctx, *pass, descriptors.layout);
 
-        let (command_pools, command_buffers) = Self::create_command_pools_and_buffers(ctx);
-
         let model = Model::demo_viking_room();
 
-        let mut setup = CommandBuilder::new(ctx, ctx.device.queues.graphics());
+        let render_target = Self::create_render_target(ctx);
 
-        let vertex_index_buffer = Self::init_vertex_index_buffer(ctx, &mut setup, &model);
-        let texture = Self::init_texture(ctx, &mut setup, &model);
+        let render_scopes = Self::create_render_scopes(ctx);
+
+        let mut setup_scope = Self::create_setup_scope(ctx);
+
+        let vertex_index_buffer = Self::init_vertex_index_buffer(ctx, &mut setup_scope, &model);
+        let texture = Self::init_texture(ctx, &mut setup_scope, &model);
+
+        let swapchain = Swapchain::create(ctx, &mut setup_scope, &pass);
+
+        setup_scope.finish(ctx);
 
         let uniforms = Uniforms::create(ctx);
         descriptors.bind_descriptors(ctx, &uniforms, &texture);
 
         let state = SyncState::create(ctx);
-
-        let swapchain = Swapchain::create(ctx, &mut setup, &pass);
-
-        setup.finish(ctx);
 
         Self {
             pass,
@@ -80,8 +96,9 @@ impl Renderer {
 
             model,
 
-            command_pools,
-            command_buffers,
+            render_target,
+
+            render_scopes,
 
             vertex_index_buffer,
             texture,
@@ -93,28 +110,25 @@ impl Renderer {
         }
     }
 
-    pub fn create_command_pools_and_buffers(
-        ctx: &Context,
-    ) -> (Vec<CommandPool>, Vec<vk::CommandBuffer>) {
-        let pool_infos = vec![
-            vk::CommandPoolCreateInfo::builder().build();
-            ctx.surface.config.image_count as usize
-        ];
-        let pools =
-            CommandPool::create_multiple(ctx, ctx.queues.graphics().family_index, &pool_infos);
+    pub fn create_render_scopes(ctx: &Context) -> Vec<Scope> {
+        (0..ctx.surface.config.image_count)
+            .map(|_| Scope::create_on(Commands::create_on_queue(ctx, ctx.queues.graphics())))
+            .collect()
+    }
 
-        let buffer_info = vk::CommandBufferAllocateInfo::builder();
-        let buffers = pools
-            .iter()
-            .map(|pool| pool.allocate_command_buffer(ctx, &buffer_info))
-            .collect::<Vec<_>>();
+    fn create_render_target(ctx: &mut Context) -> HdrImage {
+        let info = vk::ImageCreateInfo::builder().extent(conf::RENDER_RESOLUTION.into());
+        Image::create(ctx, "Render Target", &info)
+    }
 
-        (pools, buffers)
+    fn create_setup_scope(ctx: &Context) -> TempScope {
+        let commands = Commands::create_on_queue(ctx, ctx.device.queues.graphics());
+        TempScope::begin_on(ctx, commands)
     }
 
     fn init_vertex_index_buffer(
         ctx: &mut Context,
-        setup: &mut CommandBuilder,
+        setup_scope: &mut TempScope,
         model: &Model,
     ) -> Buffer {
         let data_sources = &[
@@ -126,15 +140,15 @@ impl Renderer {
 
         Buffer::create_with_staged_data(
             ctx,
-            setup,
+            setup_scope,
             "Vertex+Index Buffer",
             *create_info,
             data_sources,
         )
     }
 
-    fn init_texture(ctx: &mut Context, setup: &mut CommandBuilder, model: &Model) -> SampledImage {
-        let image = Image::create_from_image(ctx, setup, "Texture", &model.texture);
+    fn init_texture(ctx: &mut Context, setup_scope: &mut TempScope, model: &Model) -> SampledImage {
+        let image = Image::create_from_image(ctx, setup_scope, "Texture", &model.texture);
         SampledImage::from_image(ctx, image)
     }
 
@@ -149,7 +163,7 @@ impl Renderer {
             .acquire_next_image_and_signal(self.state.image_available_semaphore()[0]);
         let image_index = image_index as usize;
 
-        self.command_pools[image_index].reset(ctx);
+        self.render_scopes[image_index].commands.reset(ctx);
 
         self.uniforms.update(image_index, uniforms);
 
@@ -188,22 +202,17 @@ impl Renderer {
     ) {
         self.record_commands_for_frame(ctx, image_index);
 
-        let submit_infos = [vk::SubmitInfo::builder()
+        let submit_info = vk::SubmitInfo::builder()
             .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
             .wait_semaphores(wait_on)
-            .command_buffers(&self.command_buffers[crate::util::solo_range(image_index)])
-            .signal_semaphores(signal_to)
-            .build()];
+            .signal_semaphores(signal_to);
 
-        unsafe {
-            ctx.queue_submit(**ctx.queues.graphics(), &submit_infos, fence)
-                .expect("Failed to submit commands through the `graphics` queue");
-        }
+        self.render_scopes[image_index]
+            .commands
+            .submit(ctx, &submit_info, fence);
     }
 
     fn record_commands_for_frame(&self, ctx: &Context, image_index: usize) {
-        let command_buffer = self.command_buffers[image_index];
-
         let clear_values = [
             vk::ClearValue {
                 color: vk::ClearColorValue {
@@ -218,26 +227,16 @@ impl Renderer {
             },
         ];
 
-        let pass_info_template = vk::RenderPassBeginInfo::builder()
+        let pass_info = vk::RenderPassBeginInfo::builder()
             .render_pass(*self.pass)
             .render_area(
                 vk::Rect2D::builder()
                     .extent(ctx.surface.config.extent)
                     .build(),
             )
+            .framebuffer(self.swapchain.framebuffers[image_index])
             .clear_values(&clear_values)
             .build();
-
-        let command_buffer_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
-        unsafe {
-            ctx.begin_command_buffer(command_buffer, &command_buffer_info)
-                .expect("Failed to begin recording command buffer");
-        }
-
-        let mut pass_info = pass_info_template;
-        pass_info.framebuffer = self.swapchain.framebuffers[image_index];
 
         let viewports = [vk::Viewport::builder()
             .width(ctx.surface.config.extent.width as f32)
@@ -249,7 +248,13 @@ impl Renderer {
             .extent(ctx.surface.config.extent)
             .build()];
 
+        self.render_scopes[image_index]
+            .commands
+            .begin_recording(ctx);
+
         unsafe {
+            let command_buffer = self.render_scopes[image_index].commands.buffer;
+
             ctx.cmd_begin_render_pass(command_buffer, &pass_info, vk::SubpassContents::INLINE);
 
             ctx.cmd_bind_pipeline(
@@ -292,19 +297,20 @@ impl Renderer {
             );
 
             ctx.cmd_end_render_pass(command_buffer);
-
-            ctx.end_command_buffer(command_buffer)
-                .expect("Failed to end recording command buffer");
         }
+
+        self.render_scopes[image_index]
+            .commands
+            .finish_recording(ctx);
     }
 
     pub fn recreate(&mut self, ctx: &mut Context) {
         unsafe {
             self.swapchain.destroy_with(ctx);
         }
-        let mut setup = CommandBuilder::new(ctx, ctx.device.queues.graphics());
-        self.swapchain = Swapchain::create(ctx, &mut setup, &self.pass);
-        setup.finish(ctx);
+        let mut setup_scope = Self::create_setup_scope(ctx);
+        self.swapchain = Swapchain::create(ctx, &mut setup_scope, &self.pass);
+        setup_scope.finish(ctx);
     }
 }
 
@@ -318,9 +324,9 @@ impl Destroy<Context> for Renderer {
         self.texture.destroy_with(ctx);
         self.vertex_index_buffer.destroy_with(ctx);
 
-        for command_pool in &mut self.command_pools {
-            command_pool.destroy_with(ctx);
-        }
+        self.render_scopes.destroy_with(ctx);
+
+        self.render_target.destroy_with(ctx);
 
         self.descriptors.destroy_with(ctx);
         self.pipeline.destroy_with(ctx);

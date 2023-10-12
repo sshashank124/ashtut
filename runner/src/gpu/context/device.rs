@@ -7,8 +7,8 @@ use std::{
 use ash::vk;
 
 use super::{
+    super::alloc,
     features::Features,
-    gpu_alloc,
     instance::Instance,
     physical_device::PhysicalDevice,
     queue::{Families, Queues},
@@ -30,7 +30,7 @@ pub mod conf {
 pub struct Device {
     device: ash::Device,
     pub queues: Queues,
-    pub allocator: ManuallyDrop<gpu_alloc::Allocator>,
+    pub allocator: ManuallyDrop<alloc::Allocator>,
 }
 
 impl Device {
@@ -52,7 +52,7 @@ impl Device {
 
         let queues = Queues::create(&device, families);
 
-        let allocator_create_info = gpu_alloc::AllocatorCreateDesc {
+        let allocator_create_info = alloc::AllocatorCreateDesc {
             instance: (*instance).clone(),
             device: device.clone(),
             physical_device: **physical_device,
@@ -62,7 +62,7 @@ impl Device {
         };
 
         let allocator =
-            gpu_alloc::Allocator::new(&allocator_create_info).expect("Failed to create allocator");
+            alloc::Allocator::new(&allocator_create_info).expect("Failed to create allocator");
 
         Self {
             device,
