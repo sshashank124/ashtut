@@ -1,8 +1,6 @@
 use ash::{extensions::khr, vk};
 
-use crate::gpu::{context::Context, image::DepthImage, scope::TempScope, Destroy};
-
-use super::pass::Pass;
+use crate::gpu::{context::Context, image::DepthImage, scope::Scope, Destroy};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -13,7 +11,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn create(ctx: &mut Context, scope: &mut TempScope, pass: &Pass) -> Self {
+    pub fn create(ctx: &mut Context, scope: &mut Scope, pass: vk::RenderPass) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(**ctx.surface)
             .min_image_count(ctx.surface.config.image_count)
@@ -48,7 +46,7 @@ impl Swapchain {
 
         let depth_image = DepthImage::init(ctx, scope, "Z-Buffer");
 
-        let framebuffers = Self::create_framebuffers(ctx, **pass, &image_views, &depth_image);
+        let framebuffers = Self::create_framebuffers(ctx, pass, &image_views, &depth_image);
 
         Self {
             swapchain,

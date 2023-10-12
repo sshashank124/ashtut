@@ -5,13 +5,17 @@ use super::{
     Destroy,
 };
 
-pub struct Commands<const MULTI_USE: bool> {
+#[allow(clippy::module_name_repetitions)]
+pub type TempCommands = Template<false>;
+pub type Commands = Template<true>;
+
+pub struct Template<const MULTI_USE: bool> {
     queue: vk::Queue,
     pool: vk::CommandPool,
     pub buffer: vk::CommandBuffer,
 }
 
-impl<const MULTI_USE: bool> Commands<{ MULTI_USE }> {
+impl<const MULTI_USE: bool> Template<{ MULTI_USE }> {
     pub fn create_on_queue(ctx: &Context, queue: &Queue) -> Self {
         let pool = {
             let transient_flag = if MULTI_USE {
@@ -94,13 +98,13 @@ impl<const MULTI_USE: bool> Commands<{ MULTI_USE }> {
     }
 }
 
-impl Commands<false> {
+impl Template<false> {
     pub fn submit(&self, ctx: &Context) {
         self.submit_to_queue(ctx, &vk::SubmitInfo::default(), None);
     }
 }
 
-impl Commands<true> {
+impl Template<true> {
     pub fn submit(&self, ctx: &Context, submit_info: &vk::SubmitInfo, fence: vk::Fence) {
         self.submit_to_queue(ctx, submit_info, Some(fence));
     }
@@ -113,7 +117,7 @@ impl Commands<true> {
     }
 }
 
-impl<const MULTI_USE: bool> Destroy<Context> for Commands<{ MULTI_USE }> {
+impl<const MULTI_USE: bool> Destroy<Context> for Template<{ MULTI_USE }> {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         ctx.destroy_command_pool(self.pool, None);
     }

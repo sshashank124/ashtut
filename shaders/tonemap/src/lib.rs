@@ -23,7 +23,7 @@ pub fn vert_main(
 
 #[spirv(fragment)]
 pub fn frag_main(
-    #[spirv(descriptor_set = 0, binding = 1)] sampled_texture: &SampledImage<SampledImageType>,
+    #[spirv(descriptor_set = 0, binding = 0)] sampled_texture: &SampledImage<SampledImageType>,
     uv: Vec2,
     color: &mut Vec4,
 ) {

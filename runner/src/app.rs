@@ -42,8 +42,8 @@ impl App {
                 ),
                 glam::Mat4::perspective_rh(
                     f32::to_radians(45.0),
-                    ctx.surface.config.extent.width as f32
-                        / ctx.surface.config.extent.height as f32,
+                    render::conf::OFFSCREEN_RESOLUTION.width as f32
+                        / render::conf::OFFSCREEN_RESOLUTION.height as f32,
                     0.1,
                     10.,
                 ),

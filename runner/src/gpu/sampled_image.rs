@@ -1,18 +1,26 @@
-use super::{context::Context, image::ColorImage, sampler::Sampler, Destroy};
+use super::{
+    context::Context,
+    image::{Color, HdrColor, Image},
+    sampler::Sampler,
+    Destroy,
+};
 
-pub struct SampledImage {
-    pub image: ColorImage,
+pub type SampledHdrImage = SampledImage<HdrColor>;
+pub type SampledColorImage = SampledImage<Color>;
+
+pub struct SampledImage<T> {
+    pub image: Image<T>,
     pub sampler: Sampler,
 }
 
-impl SampledImage {
-    pub fn from_image(ctx: &Context, image: ColorImage) -> Self {
+impl<T> SampledImage<T> {
+    pub fn from_image(ctx: &Context, image: Image<T>) -> Self {
         let sampler = Sampler::create(ctx);
         Self { image, sampler }
     }
 }
 
-impl Destroy<Context> for SampledImage {
+impl<T> Destroy<Context> for SampledImage<T> {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.sampler.destroy_with(ctx);
         self.image.destroy_with(ctx);

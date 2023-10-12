@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use ash::vk;
 
-use super::{alloc, buffer::Buffer, context::Context, scope::TempScope, Destroy};
+use super::{alloc, buffer::Buffer, context::Context, scope::Scope, Destroy};
 
 #[allow(clippy::module_name_repetitions)]
 pub type HdrImage = Image<HdrColor>;
@@ -158,10 +158,55 @@ impl<T: Props> Image<T> {
     }
 }
 
+impl HdrImage {
+    pub fn transition_layout_ready_to_write(
+        &self,
+        ctx: &Context,
+        command_buffer: vk::CommandBuffer,
+    ) {
+        self.transition_layout(
+            ctx,
+            command_buffer,
+            [
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            ],
+            [
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            ],
+            [
+                vk::AccessFlags::empty(),
+                vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            ],
+        );
+    }
+
+    pub fn transition_layout_ready_to_read(
+        &self,
+        ctx: &Context,
+        command_buffer: vk::CommandBuffer,
+    ) {
+        self.transition_layout(
+            ctx,
+            command_buffer,
+            [
+                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            ],
+            [
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+            ],
+            [vk::AccessFlags::empty(), vk::AccessFlags::SHADER_READ],
+        );
+    }
+}
+
 impl ColorImage {
     pub fn create_from_image(
         ctx: &mut Context,
-        scope: &mut TempScope,
+        scope: &mut Scope,
         name: &str,
         img: &image::RgbaImage,
     ) -> Self {
@@ -251,7 +296,7 @@ impl ColorImage {
 }
 
 impl DepthImage {
-    pub fn init(ctx: &mut Context, scope: &mut TempScope, name: &str) -> Self {
+    pub fn init(ctx: &mut Context, scope: &mut Scope, name: &str) -> Self {
         let info = vk::ImageCreateInfo::builder().extent(ctx.surface.config.extent.into());
         let depth_image = Self::create(ctx, name, &info);
         depth_image.transition_layout_ready_for_use(ctx, scope.commands.buffer);

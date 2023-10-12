@@ -4,7 +4,7 @@ use ash::vk;
 
 use shared::bytemuck;
 
-use super::{alloc, context::Context, scope::TempScope, Destroy};
+use super::{alloc, context::Context, scope::Scope, Destroy};
 
 pub struct Buffer {
     buffer: vk::Buffer,
@@ -63,7 +63,7 @@ impl Buffer {
 
     pub fn create_with_staged_data(
         ctx: &mut Context,
-        scope: &mut TempScope,
+        scope: &mut Scope,
         name: &str,
         mut info: vk::BufferCreateInfo,
         data_sources: &[&[u8]],
