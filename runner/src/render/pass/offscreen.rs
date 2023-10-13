@@ -1,7 +1,5 @@
-use std::ops::Deref;
-
 use ash::vk;
-use shared::{bytemuck, UniformObjects, Vertex};
+use shared::{bytemuck, Vertex};
 
 use crate::{
     gpu::{
@@ -9,7 +7,6 @@ use crate::{
         commands::Commands,
         context::Context,
         descriptors::Descriptors,
-        framebuffer::Framebuffers,
         image::{format, Image},
         pipeline::Pipeline,
         render_pass::RenderPass,
@@ -21,7 +18,7 @@ use crate::{
     model::Model,
 };
 
-use super::Pass;
+use super::Contents;
 
 pub mod conf {
     pub const FRAME_RESOLUTION: ash::vk::Extent2D = ash::vk::Extent2D {
@@ -35,10 +32,8 @@ pub mod conf {
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"frag_main\0") };
 }
 
-pub type OffscreenPass = Pass<Offscreen>;
-
 pub struct Offscreen {
-    uniforms: Uniforms,
+    pub uniforms: Uniforms,
     model: Model,
     vertex_index_buffer: Buffer,
     texture: Texture<{ format::COLOR }>,
@@ -46,38 +41,60 @@ pub struct Offscreen {
 
 impl Offscreen {
     pub fn create(ctx: &mut Context, setup_scope: &mut Scope) -> Self {
-        let descriptors = Self::create_descriptors(ctx);
-        let render_pass = Self::create_render_pass(ctx);
-        let pipeline = Self::create_pipeline(
-            ctx,
-            *render_pass,
-            descriptors.layout,
-            conf::FRAME_RESOLUTION,
-        );
-
-        let commands = Commands::create_on_queue(ctx, ctx.queues.graphics());
-
-        let pass = Pass {
-            descriptors,
-            render_pass,
-            pipeline,
-        };
-
         let uniforms = Uniforms::create(ctx);
         let model = Model::demo_viking_room();
         let vertex_index_buffer = Self::init_vertex_index_buffer(ctx, setup_scope, &model);
         let texture = Self::init_texture(ctx, setup_scope, &model);
 
-        let pass = Self {
+        Self {
             uniforms,
             model,
             vertex_index_buffer,
             texture,
-        };
+        }
+    }
 
-        pass.bind_descriptors(ctx);
+    fn init_vertex_index_buffer(
+        ctx: &mut Context,
+        setup_scope: &mut Scope,
+        model: &Model,
+    ) -> Buffer {
+        let data_sources = &[
+            bytemuck::cast_slice(&model.mesh.vertices),
+            bytemuck::cast_slice(&model.mesh.indices),
+        ];
+        let create_info = vk::BufferCreateInfo::builder()
+            .usage(vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER);
 
-        pass
+        Buffer::create_with_staged_data(
+            ctx,
+            setup_scope,
+            "Vertex+Index Buffer",
+            *create_info,
+            data_sources,
+        )
+    }
+
+    fn init_texture(
+        ctx: &mut Context,
+        setup_scope: &mut Scope,
+        model: &Model,
+    ) -> Texture<{ format::COLOR }> {
+        let image = Image::create_from_image(ctx, setup_scope, "Texture", &model.texture);
+        Texture::from_image(ctx, image)
+    }
+}
+
+impl Contents for Offscreen {
+    fn num_command_sets(_: &Context) -> u32 {
+        1
+    }
+
+    fn render_area(_: &Context) -> vk::Rect2D {
+        vk::Rect2D {
+            extent: conf::FRAME_RESOLUTION,
+            ..Default::default()
+        }
     }
 
     fn create_descriptors(ctx: &Context) -> Descriptors {
@@ -140,7 +157,7 @@ impl Offscreen {
     fn create_render_pass(ctx: &Context) -> RenderPass {
         let attachments = [
             vk::AttachmentDescription::builder()
-                .format(format::HDR)
+                .format(super::super::conf::INTERMEDIATE_IMAGE_FORMAT)
                 .samples(vk::SampleCountFlags::TYPE_1)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
@@ -195,9 +212,8 @@ impl Offscreen {
 
     fn create_pipeline(
         ctx: &Context,
-        pass: vk::RenderPass,
+        render_pass: &RenderPass,
         descriptor_set_layout: vk::DescriptorSetLayout,
-        extent: vk::Extent2D,
     ) -> Pipeline {
         let shader_module = ctx.create_shader_module_from_file(conf::SHADER_FILE);
         let shader_stages = [
@@ -223,12 +239,12 @@ impl Offscreen {
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
 
         let viewports = [vk::Viewport::builder()
-            .width(extent.width as f32)
-            .height(extent.height as f32)
+            .width(conf::FRAME_RESOLUTION.width as f32)
+            .height(conf::FRAME_RESOLUTION.height as f32)
             .max_depth(1.0)
             .build()];
 
-        let scissors = [vk::Rect2D::builder().extent(extent).build()];
+        let scissors = [vk::Rect2D::builder().extent(conf::FRAME_RESOLUTION).build()];
 
         let viewport_info = vk::PipelineViewportStateCreateInfo::builder()
             .viewports(&viewports)
@@ -282,7 +298,7 @@ impl Offscreen {
             .color_blend_state(&color_blend_info)
             .depth_stencil_state(&depth_stencil_info)
             .layout(layout)
-            .render_pass(pass)
+            .render_pass(**render_pass)
             .build()];
 
         let pipeline = unsafe {
@@ -295,37 +311,7 @@ impl Offscreen {
         Pipeline { layout, pipeline }
     }
 
-    fn init_vertex_index_buffer(
-        ctx: &mut Context,
-        setup_scope: &mut Scope,
-        model: &Model,
-    ) -> Buffer {
-        let data_sources = &[
-            bytemuck::cast_slice(&model.mesh.vertices),
-            bytemuck::cast_slice(&model.mesh.indices),
-        ];
-        let create_info = vk::BufferCreateInfo::builder()
-            .usage(vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER);
-
-        Buffer::create_with_staged_data(
-            ctx,
-            setup_scope,
-            "Vertex+Index Buffer",
-            *create_info,
-            data_sources,
-        )
-    }
-
-    fn init_texture(
-        ctx: &mut Context,
-        setup_scope: &mut Scope,
-        model: &Model,
-    ) -> Texture<{ format::COLOR }> {
-        let image = Image::create_from_image(ctx, setup_scope, "Texture", &model.texture);
-        Texture::from_image(ctx, image)
-    }
-
-    pub fn bind_descriptors(&self, ctx: &Context) {
+    fn bind_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
         let buffer_infos = [vk::DescriptorBufferInfo::builder()
             .buffer(*self.uniforms.buffer)
             .range(vk::WHOLE_SIZE)
@@ -339,13 +325,13 @@ impl Offscreen {
 
         let writes = [
             vk::WriteDescriptorSet::builder()
-                .dst_set(self.pass.descriptors.sets[0])
+                .dst_set(descriptors.sets[0])
                 .dst_binding(0)
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                 .buffer_info(&buffer_infos)
                 .build(),
             vk::WriteDescriptorSet::builder()
-                .dst_set(self.pass.descriptors.sets[0])
+                .dst_set(descriptors.sets[0])
                 .dst_binding(1)
                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                 .image_info(&sampled_image_info)
@@ -357,89 +343,27 @@ impl Offscreen {
         }
     }
 
-    pub fn draw(
-        &mut self,
-        ctx: &Context,
-        render_target: &Framebuffers<{ format::HDR }>,
-        uniforms: &UniformObjects,
-    ) {
-        self.uniforms.update(uniforms);
-        self.commands.reset(ctx);
-        self.record_commands(ctx, render_target);
-        let submit_info = vk::SubmitInfo::builder();
-        self.commands.submit(ctx, &submit_info, None);
-    }
-
-    fn record_commands(&self, ctx: &Context, render_target: &Framebuffers<{ format::HDR }>) {
-        let clear_values = [
-            vk::ClearValue {
-                color: vk::ClearColorValue {
-                    float32: [0.0, 0.0, 0.0, 0.0],
-                },
-            },
-            vk::ClearValue {
-                depth_stencil: vk::ClearDepthStencilValue {
-                    depth: 1.0,
-                    stencil: 0,
-                },
-            },
-        ];
-
-        let pass_info = vk::RenderPassBeginInfo::builder()
-            .render_pass(*self.pass.render_pass)
-            .render_area(vk::Rect2D::builder().extent(conf::FRAME_RESOLUTION).build())
-            .framebuffer(render_target.framebuffers[0])
-            .clear_values(&clear_values)
-            .build();
-
-        self.commands.begin_recording(ctx);
-
+    fn record_commands(&self, ctx: &Context, commands: &Commands) {
         unsafe {
-            ctx.cmd_begin_render_pass(
-                self.commands.buffer,
-                &pass_info,
-                vk::SubpassContents::INLINE,
-            );
-
-            ctx.cmd_bind_pipeline(
-                self.commands.buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                *self.pass.pipeline,
-            );
-
             let vertex_buffers = [*self.vertex_index_buffer];
-            ctx.cmd_bind_vertex_buffers(self.commands.buffer, 0, &vertex_buffers, &[0]);
+            ctx.cmd_bind_vertex_buffers(commands.buffer, 0, &vertex_buffers, &[0]);
 
             ctx.cmd_bind_index_buffer(
-                self.commands.buffer,
+                commands.buffer,
                 *self.vertex_index_buffer,
                 self.model.mesh.vertex_data_size() as u64,
                 vk::IndexType::UINT32,
             );
 
-            let descriptor_sets = [self.pass.descriptors.sets[0]];
-            ctx.cmd_bind_descriptor_sets(
-                self.commands.buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pass.pipeline.layout,
-                0,
-                &descriptor_sets,
-                &[],
-            );
-
             ctx.cmd_draw_indexed(
-                self.commands.buffer,
+                commands.buffer,
                 self.model.mesh.indices.len() as u32,
                 1,
                 0,
                 0,
                 0,
             );
-
-            ctx.cmd_end_render_pass(self.commands.buffer);
         }
-
-        self.commands.finish_recording(ctx);
     }
 }
 
@@ -448,15 +372,5 @@ impl Destroy<Context> for Offscreen {
         self.texture.destroy_with(ctx);
         self.vertex_index_buffer.destroy_with(ctx);
         self.uniforms.destroy_with(ctx);
-
-        self.commands.destroy_with(ctx);
-        self.pass.destroy_with(ctx);
-    }
-}
-
-impl Deref for Offscreen {
-    type Target = Pass;
-    fn deref(&self) -> &Self::Target {
-        &self.pass
     }
 }

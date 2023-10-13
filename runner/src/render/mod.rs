@@ -5,18 +5,26 @@ mod sync_state;
 use shared::UniformObjects;
 
 use crate::gpu::{
-    context::Context, framebuffer::Framebuffers, image::format, scope::Scope, Destroy,
+    context::Context, framebuffer::Framebuffers, image::Image, scope::Scope, Destroy,
 };
 
-use self::{swapchain::Swapchain, sync_state::SyncState};
+use self::{
+    pass::{Offscreen, Pass, Tonemap},
+    swapchain::Swapchain,
+    sync_state::{SyncRequirements, SyncState},
+};
+
+pub mod conf {
+    pub const INTERMEDIATE_IMAGE_FORMAT: ash::vk::Format = crate::gpu::image::format::HDR;
+}
 
 pub struct Renderer {
     // offscreen pass
-    offscreen_pass: pass::Offscreen,
-    intermediate_target: Framebuffers<{ format::HDR }>,
+    offscreen_pass: Pass<Offscreen>,
+    intermediate_target: Framebuffers<{ conf::INTERMEDIATE_IMAGE_FORMAT }>,
 
     // tonemap pass
-    tonemap_pass: pass::Tonemap,
+    tonemap_pass: Pass<Tonemap>,
     swapchain: Swapchain,
 
     // state
@@ -31,7 +39,11 @@ impl Renderer {
     pub fn create(ctx: &mut Context) -> Self {
         let mut setup_scope = Scope::begin_on(ctx, ctx.queues.graphics());
 
-        let offscreen_pass = pass::Offscreen::create(ctx, &mut setup_scope);
+        let offscreen_pass = {
+            let contents = Offscreen::create(ctx, &mut setup_scope);
+            Pass::create(ctx, contents)
+        };
+
         let intermediate_target = Framebuffers::create_new(
             ctx,
             "Intermediate render target",
@@ -39,7 +51,17 @@ impl Renderer {
             pass::offscreen::conf::FRAME_RESOLUTION,
         );
 
-        let tonemap_pass = pass::Tonemap::create(ctx, &intermediate_target);
+        let tonemap_pass = {
+            let input_image = Image::new(
+                ctx,
+                intermediate_target.colors[0].image,
+                conf::INTERMEDIATE_IMAGE_FORMAT,
+                None,
+            );
+            let contents = Tonemap::create_for(ctx, input_image);
+            Pass::create(ctx, contents)
+        };
+
         let swapchain = Swapchain::create(ctx, &tonemap_pass.render_pass);
 
         setup_scope.finish(ctx);
@@ -63,12 +85,18 @@ impl Renderer {
                 .expect("Failed to wait for fence");
         }
 
-        self.offscreen_pass
-            .draw(ctx, &self.intermediate_target, uniforms);
+        self.offscreen_pass.contents.uniforms.update(uniforms);
+
+        self.offscreen_pass.draw(
+            ctx,
+            0,
+            &self.intermediate_target,
+            &SyncRequirements::default(),
+        );
 
         let (image_index, needs_recreating) = self
             .swapchain
-            .acquire_next_image_and_signal(self.state.image_available_semaphore()[0]);
+            .get_next_image(self.state.image_available_semaphore()[0]);
         let image_index = image_index as usize;
 
         let needs_recreating = needs_recreating || {
@@ -80,10 +108,12 @@ impl Renderer {
             self.tonemap_pass.draw(
                 ctx,
                 image_index,
-                self.state.image_available_semaphore(),
-                self.state.render_finished_semaphore(),
-                self.state.in_flight_fence()[0],
-                (&self.intermediate_target, &self.swapchain.render_target),
+                &self.swapchain.render_target,
+                &SyncRequirements {
+                    wait_on: self.state.image_available_semaphore(),
+                    signal_to: self.state.render_finished_semaphore(),
+                    fence: Some(self.state.in_flight_fence()[0]),
+                },
             );
 
             self.swapchain

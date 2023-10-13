@@ -5,10 +5,9 @@ use ash::vk;
 use super::{alloc, buffer::Buffer, context::Context, scope::Scope, Destroy};
 
 pub mod format {
-    use ash::vk;
-    pub const HDR: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
-    pub const COLOR: vk::Format = vk::Format::R8G8B8A8_SRGB;
-    pub const DEPTH: vk::Format = vk::Format::D32_SFLOAT;
+    pub const HDR: ash::vk::Format = ash::vk::Format::R32G32B32A32_SFLOAT;
+    pub const COLOR: ash::vk::Format = ash::vk::Format::R8G8B8A8_SRGB;
+    pub const DEPTH: ash::vk::Format = ash::vk::Format::D32_SFLOAT;
 }
 
 pub struct Image<const FORMAT: vk::Format> {

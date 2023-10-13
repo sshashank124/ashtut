@@ -7,6 +7,20 @@ use super::{
     Destroy,
 };
 
+pub const CLEAR_VALUES: &[vk::ClearValue] = &[
+    vk::ClearValue {
+        color: vk::ClearColorValue {
+            float32: [0.0, 0.0, 0.0, 0.0],
+        },
+    },
+    vk::ClearValue {
+        depth_stencil: vk::ClearDepthStencilValue {
+            depth: 1.0,
+            stencil: 0,
+        },
+    },
+];
+
 pub struct Framebuffers<const FORMAT: vk::Format> {
     pub colors: Vec<Image<FORMAT>>,
     pub depth: Image<{ format::DEPTH }>,

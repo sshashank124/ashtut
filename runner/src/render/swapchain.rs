@@ -58,7 +58,7 @@ impl Swapchain {
         }
     }
 
-    pub fn acquire_next_image_and_signal(&self, signal_to: vk::Semaphore) -> (u32, bool) {
+    pub fn get_next_image(&self, signal_to: vk::Semaphore) -> (u32, bool) {
         unsafe {
             self.loader
                 .acquire_next_image(self.swapchain, u64::MAX, signal_to, vk::Fence::null())
