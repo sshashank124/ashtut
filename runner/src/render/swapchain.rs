@@ -1,17 +1,17 @@
 use ash::{extensions::khr, vk};
 
-use crate::gpu::{context::Context, image::DepthImage, scope::Scope, Destroy};
+use crate::gpu::{
+    context::Context, framebuffer::Framebuffers, image::Image, render_pass::RenderPass, Destroy,
+};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
     pub loader: khr::Swapchain,
-    pub image_views: Vec<vk::ImageView>,
-    pub depth_image: DepthImage,
-    pub framebuffers: Vec<vk::Framebuffer>,
+    pub frames: Framebuffers<{ vk::Format::UNDEFINED }>,
 }
 
 impl Swapchain {
-    pub fn create(ctx: &mut Context, scope: &mut Scope, pass: vk::RenderPass) -> Self {
+    pub fn create(ctx: &mut Context, render_pass: &RenderPass) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(**ctx.surface)
             .min_image_count(ctx.surface.config.image_count)
@@ -38,68 +38,26 @@ impl Swapchain {
             loader
                 .get_swapchain_images(swapchain)
                 .expect("Failed to get swapchain images")
-        };
+        }
+        .into_iter()
+        .map(|image| Image::new(ctx, image, ctx.surface.config.surface_format.format, None))
+        .collect::<Vec<_>>();
 
         ctx.surface.config.image_count = images.len() as u32;
 
-        let image_views = Self::create_image_views(ctx, &images);
-
-        let depth_image = DepthImage::init(ctx, scope, "Z-Buffer");
-
-        let framebuffers = Self::create_framebuffers(ctx, pass, &image_views, &depth_image);
+        let frames = Framebuffers::create_for_images(
+            ctx,
+            "Swapchain",
+            render_pass,
+            ctx.surface.config.extent,
+            images,
+        );
 
         Self {
             swapchain,
             loader,
-            image_views,
-            depth_image,
-            framebuffers,
+            frames,
         }
-    }
-
-    fn create_image_views(ctx: &Context, images: &[vk::Image]) -> Vec<vk::ImageView> {
-        images
-            .iter()
-            .map(|&image| {
-                let subresource_range = vk::ImageSubresourceRange::builder()
-                    .aspect_mask(vk::ImageAspectFlags::COLOR)
-                    .level_count(1)
-                    .layer_count(1);
-                let create_info = vk::ImageViewCreateInfo::builder()
-                    .image(image)
-                    .view_type(vk::ImageViewType::TYPE_2D)
-                    .format(ctx.surface.config.surface_format.format)
-                    .subresource_range(*subresource_range);
-                unsafe {
-                    ctx.create_image_view(&create_info, None)
-                        .expect("Failed to create image view")
-                }
-            })
-            .collect()
-    }
-
-    fn create_framebuffers(
-        ctx: &Context,
-        pass: vk::RenderPass,
-        image_views: &[vk::ImageView],
-        depth_image: &DepthImage,
-    ) -> Vec<vk::Framebuffer> {
-        image_views
-            .iter()
-            .map(|&image_view| {
-                let attachments = [image_view, depth_image.view];
-                let create_info = vk::FramebufferCreateInfo::builder()
-                    .render_pass(pass)
-                    .attachments(&attachments)
-                    .width(ctx.surface.config.extent.width)
-                    .height(ctx.surface.config.extent.height)
-                    .layers(1);
-                unsafe {
-                    ctx.create_framebuffer(&create_info, None)
-                        .expect("Failed to create framebuffer")
-                }
-            })
-            .collect()
     }
 
     pub fn acquire_next_image_and_signal(&self, signal_to: vk::Semaphore) -> (u32, bool) {
@@ -135,13 +93,7 @@ impl Swapchain {
 
 impl Destroy<Context> for Swapchain {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        for &framebuffer in &self.framebuffers {
-            ctx.destroy_framebuffer(framebuffer, None);
-        }
-        self.depth_image.destroy_with(ctx);
-        for &image_view in &self.image_views {
-            ctx.destroy_image_view(image_view, None);
-        }
+        self.frames.destroy_with(ctx);
         self.loader.destroy_swapchain(self.swapchain, None);
     }
 }

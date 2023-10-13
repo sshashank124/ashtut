@@ -40,13 +40,7 @@ impl App {
                     glam::vec3(0.0, 0.0, 0.2),
                     glam::vec3(0.0, 0.0, 1.0),
                 ),
-                glam::Mat4::perspective_rh(
-                    f32::to_radians(45.0),
-                    render::conf::OFFSCREEN_RESOLUTION.width as f32
-                        / render::conf::OFFSCREEN_RESOLUTION.height as f32,
-                    0.1,
-                    10.,
-                ),
+                glam::Mat4::perspective_rh(f32::to_radians(45.0), 4.0 / 3.0, 0.1, 10.),
             ),
         };
 

@@ -1,10 +1,15 @@
 pub mod buffer;
 pub mod commands;
 pub mod context;
+pub mod descriptors;
+pub mod framebuffer;
 pub mod image;
+pub mod pipeline;
+pub mod render_pass;
 pub mod sampled_image;
 pub mod sampler;
 pub mod scope;
+pub mod uniforms;
 pub mod vertex;
 
 pub use gpu_allocator::vulkan as alloc;

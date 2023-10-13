@@ -2,7 +2,7 @@ use ash::vk;
 
 use shared::UniformObjects;
 
-use crate::gpu::{buffer::Buffer, context::Context, Destroy};
+use super::{buffer::Buffer, context::Context, Destroy};
 
 pub struct Uniforms {
     pub buffer: Buffer,

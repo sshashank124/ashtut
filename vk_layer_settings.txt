@@ -42,4 +42,5 @@ khronos_validation.enables=VK_VALIDATION_FEATURE_ENABLE_BEST_PRACTICES_EXT,VALID
 # debug utils (we want them during debug runs)
 # pageable device-local memory
 # memory priority (for paging priority with previous)
-khronos_validation.message_id_filter = 0x822806fa,0x2e99adca,0x61f61757
+# use maximum depth buffer precision for raytracing
+khronos_validation.message_id_filter = 0x822806fa,0x2e99adca,0x61f61757,0x53bb41ae

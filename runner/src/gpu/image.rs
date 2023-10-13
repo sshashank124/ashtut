@@ -4,58 +4,46 @@ use ash::vk;
 
 use super::{alloc, buffer::Buffer, context::Context, scope::Scope, Destroy};
 
-#[allow(clippy::module_name_repetitions)]
-pub type HdrImage = Image<HdrColor>;
-#[allow(clippy::module_name_repetitions)]
-pub type ColorImage = Image<Color>;
-#[allow(clippy::module_name_repetitions)]
-pub type DepthImage = Image<Depth>;
-
-pub trait Props {
-    const FORMAT: vk::Format;
-    const ASPECT_FLAGS: vk::ImageAspectFlags;
-    const FINAL_LAYOUT: vk::ImageLayout;
-    fn usage() -> vk::ImageUsageFlags;
+pub mod format {
+    use ash::vk;
+    pub const HDR: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
+    pub const COLOR: vk::Format = vk::Format::R8G8B8A8_SRGB;
+    pub const DEPTH: vk::Format = vk::Format::D32_SFLOAT;
 }
 
-pub struct HdrColor;
-impl Props for HdrColor {
-    const FORMAT: vk::Format = vk::Format::R32G32B32A32_SFLOAT;
-    const ASPECT_FLAGS: vk::ImageAspectFlags = vk::ImageAspectFlags::COLOR;
-    const FINAL_LAYOUT: vk::ImageLayout = vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL;
-    fn usage() -> vk::ImageUsageFlags {
-        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::SAMPLED
-    }
-}
-
-pub struct Color;
-impl Props for Color {
-    const FORMAT: vk::Format = vk::Format::R8G8B8A8_SRGB;
-    const ASPECT_FLAGS: vk::ImageAspectFlags = vk::ImageAspectFlags::COLOR;
-    const FINAL_LAYOUT: vk::ImageLayout = vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL;
-    fn usage() -> vk::ImageUsageFlags {
-        vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::TRANSFER_DST
-    }
-}
-
-pub struct Depth;
-impl Props for Depth {
-    const FORMAT: vk::Format = vk::Format::D16_UNORM;
-    const ASPECT_FLAGS: vk::ImageAspectFlags = vk::ImageAspectFlags::DEPTH;
-    const FINAL_LAYOUT: vk::ImageLayout = vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    fn usage() -> vk::ImageUsageFlags {
-        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-    }
-}
-
-pub struct Image<T> {
-    image: vk::Image,
-    allocation: Option<alloc::Allocation>,
+pub struct Image<const FORMAT: vk::Format> {
+    pub image: vk::Image,
     pub view: vk::ImageView,
-    _p: std::marker::PhantomData<T>,
+    allocation: Option<alloc::Allocation>,
 }
 
-impl<T: Props> Image<T> {
+impl<const FORMAT: vk::Format> Image<FORMAT> {
+    pub fn new(
+        ctx: &Context,
+        image: vk::Image,
+        format: vk::Format,
+        allocation: Option<alloc::Allocation>,
+    ) -> Self {
+        let view = {
+            let info = vk::ImageViewCreateInfo::builder()
+                .image(image)
+                .view_type(vk::ImageViewType::TYPE_2D)
+                .format(format)
+                .subresource_range(Self::subresource_range());
+
+            unsafe {
+                ctx.create_image_view(&info, None)
+                    .expect("Failed to create image view")
+            }
+        };
+
+        Self {
+            image,
+            view,
+            allocation,
+        }
+    }
+
     pub fn create(ctx: &mut Context, name: &str, info: &vk::ImageCreateInfo) -> Self {
         let image_info = vk::ImageCreateInfo {
             image_type: vk::ImageType::TYPE_2D,
@@ -64,8 +52,8 @@ impl<T: Props> Image<T> {
             initial_layout: vk::ImageLayout::UNDEFINED,
             samples: vk::SampleCountFlags::TYPE_1,
             tiling: vk::ImageTiling::OPTIMAL,
-            format: T::FORMAT,
-            usage: T::usage(),
+            format: FORMAT,
+            usage: Self::usage_flags() | info.usage,
             ..*info
         };
 
@@ -73,12 +61,6 @@ impl<T: Props> Image<T> {
             ctx.create_image(&image_info, None)
                 .expect("Failed to create image")
         };
-
-        let view_info = vk::ImageViewCreateInfo::builder()
-            .image(image)
-            .view_type(vk::ImageViewType::TYPE_2D)
-            .format(T::FORMAT)
-            .subresource_range(Self::subresource_range());
 
         let requirements = unsafe { ctx.get_image_memory_requirements(image) };
         let allocation_create_info = alloc::AllocationCreateDesc {
@@ -100,22 +82,12 @@ impl<T: Props> Image<T> {
                 .expect("Failed to bind memory");
         }
 
-        let view = unsafe {
-            ctx.create_image_view(&view_info, None)
-                .expect("Failed to create image view")
-        };
-
-        Self {
-            image,
-            allocation: Some(allocation),
-            view,
-            _p: std::marker::PhantomData,
-        }
+        Self::new(ctx, image, FORMAT, Some(allocation))
     }
 
     const fn subresource_range() -> vk::ImageSubresourceRange {
         vk::ImageSubresourceRange {
-            aspect_mask: T::ASPECT_FLAGS,
+            aspect_mask: Self::aspect_flags(),
             base_mip_level: 0,
             level_count: 1,
             base_array_layer: 0,
@@ -156,9 +128,23 @@ impl<T: Props> Image<T> {
             );
         }
     }
+
+    const fn usage_flags() -> vk::ImageUsageFlags {
+        match FORMAT {
+            format::DEPTH => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            _ => vk::ImageUsageFlags::SAMPLED,
+        }
+    }
+
+    const fn aspect_flags() -> vk::ImageAspectFlags {
+        match FORMAT {
+            format::DEPTH => vk::ImageAspectFlags::DEPTH,
+            _ => vk::ImageAspectFlags::COLOR,
+        }
+    }
 }
 
-impl HdrImage {
+impl Image<{ format::HDR }> {
     pub fn transition_layout_ready_to_write(
         &self,
         ctx: &Context,
@@ -203,7 +189,7 @@ impl HdrImage {
     }
 }
 
-impl ColorImage {
+impl Image<{ format::COLOR }> {
     pub fn create_from_image(
         ctx: &mut Context,
         scope: &mut Scope,
@@ -222,12 +208,46 @@ impl ColorImage {
             depth: 1,
         };
 
-        let info = vk::ImageCreateInfo::builder().extent(extent);
-        let mut image = Self::create(ctx, name, &info);
+        let info = vk::ImageCreateInfo::builder()
+            .extent(extent)
+            .usage(vk::ImageUsageFlags::TRANSFER_DST);
+        let image = Self::create(ctx, name, &info);
 
-        image.transition_layout_for_transfer(ctx, scope.commands.buffer);
+        // Transition to layout for copying data into image
+        image.transition_layout(
+            ctx,
+            scope.commands.buffer,
+            [
+                vk::ImageLayout::UNDEFINED,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            ],
+            [
+                vk::PipelineStageFlags::TOP_OF_PIPE,
+                vk::PipelineStageFlags::TRANSFER,
+            ],
+            [vk::AccessFlags::empty(), vk::AccessFlags::TRANSFER_WRITE],
+        );
+
+        // Copy data to image
         image.record_copy_from(ctx, scope.commands.buffer, &staging, extent);
-        image.transition_layout_ready_to_read(ctx, scope.commands.buffer);
+
+        // Transition to layout for reading from shader
+        image.transition_layout(
+            ctx,
+            scope.commands.buffer,
+            [
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            ],
+            [
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+            ],
+            [
+                vk::AccessFlags::TRANSFER_WRITE,
+                vk::AccessFlags::SHADER_READ,
+            ],
+        );
 
         scope.add_resource(staging);
 
@@ -235,7 +255,7 @@ impl ColorImage {
     }
 
     pub fn record_copy_from(
-        &mut self,
+        &self,
         ctx: &Context,
         command_buffer: vk::CommandBuffer,
         src: &Buffer,
@@ -261,71 +281,13 @@ impl ColorImage {
             );
         }
     }
-
-    fn transition_layout_for_transfer(&self, ctx: &Context, command_buffer: vk::CommandBuffer) {
-        self.transition_layout(
-            ctx,
-            command_buffer,
-            [
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            ],
-            [
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::TRANSFER,
-            ],
-            [vk::AccessFlags::empty(), vk::AccessFlags::TRANSFER_WRITE],
-        );
-    }
-
-    fn transition_layout_ready_to_read(&self, ctx: &Context, command_buffer: vk::CommandBuffer) {
-        self.transition_layout(
-            ctx,
-            command_buffer,
-            [vk::ImageLayout::TRANSFER_DST_OPTIMAL, Color::FINAL_LAYOUT],
-            [
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::FRAGMENT_SHADER,
-            ],
-            [
-                vk::AccessFlags::TRANSFER_WRITE,
-                vk::AccessFlags::SHADER_READ,
-            ],
-        );
-    }
 }
 
-impl DepthImage {
-    pub fn init(ctx: &mut Context, scope: &mut Scope, name: &str) -> Self {
-        let info = vk::ImageCreateInfo::builder().extent(ctx.surface.config.extent.into());
-        let depth_image = Self::create(ctx, name, &info);
-        depth_image.transition_layout_ready_for_use(ctx, scope.commands.buffer);
-        depth_image
-    }
-
-    fn transition_layout_ready_for_use(&self, ctx: &Context, command_buffer: vk::CommandBuffer) {
-        self.transition_layout(
-            ctx,
-            command_buffer,
-            [vk::ImageLayout::UNDEFINED, Depth::FINAL_LAYOUT],
-            [
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-            ],
-            [
-                vk::AccessFlags::empty(),
-                vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
-                    | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            ],
-        );
-    }
-}
-
-impl<T> Destroy<Context> for Image<T> {
+impl<const FORMAT: vk::Format> Destroy<Context> for Image<FORMAT> {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         ctx.destroy_image_view(self.view, None);
-        ctx.destroy_image(self.image, None);
         if let Some(allocation) = self.allocation.take() {
+            ctx.destroy_image(self.image, None);
             ctx.allocator
                 .free(allocation)
                 .expect("Failed to free allocated memory");
@@ -333,7 +295,7 @@ impl<T> Destroy<Context> for Image<T> {
     }
 }
 
-impl<T> Deref for Image<T> {
+impl<const FORMAT: vk::Format> Deref for Image<FORMAT> {
     type Target = vk::Image;
     fn deref(&self) -> &Self::Target {
         &self.image

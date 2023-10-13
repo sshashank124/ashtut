@@ -1,26 +1,20 @@
-use super::{
-    context::Context,
-    image::{Color, HdrColor, Image},
-    sampler::Sampler,
-    Destroy,
-};
+use ash::vk;
 
-pub type SampledHdrImage = SampledImage<HdrColor>;
-pub type SampledColorImage = SampledImage<Color>;
+use super::{context::Context, image::Image, sampler::Sampler, Destroy};
 
-pub struct SampledImage<T> {
-    pub image: Image<T>,
+pub struct SampledImage<const FORMAT: vk::Format> {
+    pub image: Image<FORMAT>,
     pub sampler: Sampler,
 }
 
-impl<T> SampledImage<T> {
-    pub fn from_image(ctx: &Context, image: Image<T>) -> Self {
+impl<const FORMAT: vk::Format> SampledImage<FORMAT> {
+    pub fn from_image(ctx: &Context, image: Image<FORMAT>) -> Self {
         let sampler = Sampler::create(ctx);
         Self { image, sampler }
     }
 }
 
-impl<T> Destroy<Context> for SampledImage<T> {
+impl<const FORMAT: vk::Format> Destroy<Context> for SampledImage<FORMAT> {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.sampler.destroy_with(ctx);
         self.image.destroy_with(ctx);

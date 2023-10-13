@@ -1,4 +1,8 @@
-use super::{commands::TempCommands, context::Context, Destroy};
+use super::{
+    commands::TempCommands,
+    context::{queue::Queue, Context},
+    Destroy,
+};
 
 pub struct Scope {
     pub commands: TempCommands,
@@ -13,14 +17,14 @@ impl Scope {
         }
     }
 
-    pub fn add_resource(&mut self, resource: impl Destroy<Context> + 'static) {
-        self.resources.push(Box::new(resource));
-    }
-
-    pub fn begin_on(ctx: &Context, commands: TempCommands) -> Self {
-        let scope = Self::create(commands);
+    pub fn begin_on(ctx: &Context, queue: &Queue) -> Self {
+        let scope = Self::create(TempCommands::create_on_queue(ctx, queue));
         scope.commands.begin_recording(ctx);
         scope
+    }
+
+    pub fn add_resource(&mut self, resource: impl Destroy<Context> + 'static) {
+        self.resources.push(Box::new(resource));
     }
 
     pub fn finish(mut self, ctx: &mut Context) {

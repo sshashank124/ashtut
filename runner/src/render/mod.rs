@@ -1,9 +1,6 @@
-mod descriptors;
-mod pass;
-mod pipeline;
+pub mod pass;
 mod swapchain;
 mod sync_state;
-mod uniforms;
 
 use ash::vk;
 
@@ -12,58 +9,44 @@ use shared::{bytemuck, UniformObjects};
 use crate::{
     gpu::{
         buffer::Buffer,
-        commands::{Commands, TempCommands},
+        commands::Commands,
         context::Context,
-        image::{DepthImage, Image},
-        sampled_image::{SampledColorImage, SampledHdrImage, SampledImage},
+        framebuffer::Framebuffers,
+        image::{format, Image},
+        sampled_image::SampledImage,
+        sampler::Sampler,
         scope::Scope,
+        uniforms::Uniforms,
         Destroy,
     },
     model::Model,
 };
 
-use self::{
-    descriptors::Descriptors, pass::Pass, pipeline::Pipeline, swapchain::Swapchain,
-    sync_state::SyncState, uniforms::Uniforms,
-};
-
-pub mod conf {
-    pub const OFFSCREEN_RESOLUTION: ash::vk::Extent2D = ash::vk::Extent2D {
-        width: 1024,
-        height: 768,
-    };
-}
+use self::{swapchain::Swapchain, sync_state::SyncState};
 
 pub struct Renderer {
     // offscreen pass
-    offscreen_descriptors: Descriptors,
-    offscreen_pass: Pass,
-    offscreen_pipeline: Pipeline,
+    offscreen_pass: pass::Offscreen,
+    render_target: Framebuffers<{ format::HDR }>,
 
     // tonemap pass
-    tonemap_descriptors: Descriptors,
-    tonemap_pass: Pass,
-    tonemap_pipeline: Pipeline,
+    tonemap_pass: pass::Tonemap,
+    swapchain: Swapchain,
+    sampler: Sampler,
 
     // model
     model: Model,
-
-    // off-screen render target
-    render_target: (SampledHdrImage, DepthImage, vk::Framebuffer),
 
     // drawing
     offscreen_commands: Commands,
     tonemap_commands: Vec<Commands>,
 
     vertex_index_buffer: Buffer,
-    texture: SampledColorImage,
+    texture: SampledImage<{ format::COLOR }>,
 
     // state
     pub uniforms: Uniforms,
     state: SyncState,
-
-    // Recreate on resize
-    swapchain: Swapchain,
 }
 
 pub enum Error {
@@ -72,54 +55,49 @@ pub enum Error {
 
 impl Renderer {
     pub fn create(ctx: &mut Context) -> Self {
-        let offscreen_descriptors = Descriptors::create_offscreen(ctx);
-        let offscreen_pass = Pass::create_for_offscreen(ctx);
-        let offscreen_pipeline = Pipeline::create_offscreen(
+        let offscreen_pass = pass::Offscreen::create(ctx);
+        let render_target = Framebuffers::create_new(
             ctx,
-            *offscreen_pass,
-            conf::OFFSCREEN_RESOLUTION,
-            offscreen_descriptors.layout,
+            "Offscreen Render Target",
+            &offscreen_pass.render_pass,
+            pass::offscreen::conf::FRAME_RESOLUTION,
         );
 
-        let tonemap_descriptors = Descriptors::create_tonemap(ctx);
-        let tonemap_pass = Pass::create_for_tonemap(ctx);
-        let tonemap_pipeline =
-            Pipeline::create_tonemap(ctx, *tonemap_pass, tonemap_descriptors.layout);
+        let tonemap_pass = pass::Tonemap::create(ctx);
+        let swapchain = Swapchain::create(ctx, &tonemap_pass.render_pass);
+        let sampler = Sampler::create(ctx);
 
         let model = Model::demo_viking_room();
-
-        let render_target = Self::create_render_targets(ctx, *offscreen_pass);
 
         let offscreen_commands = Commands::create_on_queue(ctx, ctx.queues.graphics());
         let tonemap_commands = Self::create_tonemap_commands(ctx);
 
-        let mut setup_scope = Self::create_setup_scope(ctx);
+        let mut setup_scope = Scope::begin_on(ctx, ctx.queues.graphics());
 
         let vertex_index_buffer = Self::init_vertex_index_buffer(ctx, &mut setup_scope, &model);
         let texture = Self::init_texture(ctx, &mut setup_scope, &model);
 
-        let swapchain = Swapchain::create(ctx, &mut setup_scope, *tonemap_pass);
-
         setup_scope.finish(ctx);
 
         let uniforms = Uniforms::create(ctx);
-        offscreen_descriptors.bind_offscreen_descriptors(ctx, &uniforms, &texture);
-        tonemap_descriptors.bind_tonemap_descriptors(ctx, &render_target.0);
+        offscreen_pass
+            .descriptors
+            .bind_offscreen_descriptors(ctx, &uniforms, &texture);
+        tonemap_pass
+            .descriptors
+            .bind_tonemap_descriptors(ctx, &render_target.colors[0], &sampler);
 
         let state = SyncState::create(ctx);
 
         Self {
-            offscreen_descriptors,
             offscreen_pass,
-            offscreen_pipeline,
+            render_target,
 
-            tonemap_descriptors,
             tonemap_pass,
-            tonemap_pipeline,
+            swapchain,
+            sampler,
 
             model,
-
-            render_target,
 
             offscreen_commands,
             tonemap_commands,
@@ -129,8 +107,6 @@ impl Renderer {
 
             uniforms,
             state,
-
-            swapchain,
         }
     }
 
@@ -138,37 +114,6 @@ impl Renderer {
         (0..ctx.surface.config.image_count)
             .map(|_| Commands::create_on_queue(ctx, ctx.queues.graphics()))
             .collect()
-    }
-
-    fn create_render_targets(
-        ctx: &mut Context,
-        pass: vk::RenderPass,
-    ) -> (SampledHdrImage, DepthImage, vk::Framebuffer) {
-        let info = vk::ImageCreateInfo::builder().extent(conf::OFFSCREEN_RESOLUTION.into());
-        let color = {
-            let image = Image::create(ctx, "Render Target [COLOR]", &info);
-            SampledHdrImage::from_image(ctx, image)
-        };
-        let depth = Image::create(ctx, "Render Target [DEPTH]", &info);
-
-        let attachments = [color.image.view, depth.view];
-        let framebuffer_info = vk::FramebufferCreateInfo::builder()
-            .render_pass(pass)
-            .attachments(&attachments)
-            .width(conf::OFFSCREEN_RESOLUTION.width)
-            .height(conf::OFFSCREEN_RESOLUTION.height)
-            .layers(1);
-        let framebuffer = unsafe {
-            ctx.create_framebuffer(&framebuffer_info, None)
-                .expect("Failed to create framebuffer")
-        };
-
-        (color, depth, framebuffer)
-    }
-
-    fn create_setup_scope(ctx: &Context) -> Scope {
-        let commands = TempCommands::create_on_queue(ctx, ctx.device.queues.graphics());
-        Scope::begin_on(ctx, commands)
     }
 
     fn init_vertex_index_buffer(
@@ -196,7 +141,7 @@ impl Renderer {
         ctx: &mut Context,
         setup_scope: &mut Scope,
         model: &Model,
-    ) -> SampledColorImage {
+    ) -> SampledImage<{ format::COLOR }> {
         let image = Image::create_from_image(ctx, setup_scope, "Texture", &model.texture);
         SampledImage::from_image(ctx, image)
     }
@@ -297,13 +242,13 @@ impl Renderer {
         ];
 
         let pass_info = vk::RenderPassBeginInfo::builder()
-            .render_pass(*self.offscreen_pass)
+            .render_pass(*self.offscreen_pass.render_pass)
             .render_area(
                 vk::Rect2D::builder()
-                    .extent(conf::OFFSCREEN_RESOLUTION)
+                    .extent(pass::offscreen::conf::FRAME_RESOLUTION)
                     .build(),
             )
-            .framebuffer(self.render_target.2)
+            .framebuffer(self.render_target.framebuffers[0])
             .clear_values(&clear_values)
             .build();
 
@@ -317,7 +262,7 @@ impl Renderer {
             ctx.cmd_bind_pipeline(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
-                *self.offscreen_pipeline,
+                *self.offscreen_pass.pipeline,
             );
 
             let vertex_buffers = [*self.vertex_index_buffer];
@@ -330,11 +275,11 @@ impl Renderer {
                 vk::IndexType::UINT32,
             );
 
-            let descriptor_sets = [self.offscreen_descriptors.sets[0]];
+            let descriptor_sets = [self.offscreen_pass.descriptors.sets[0]];
             ctx.cmd_bind_descriptor_sets(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
-                self.offscreen_pipeline.layout,
+                self.offscreen_pass.pipeline.layout,
                 0,
                 &descriptor_sets,
                 &[],
@@ -371,13 +316,13 @@ impl Renderer {
         ];
 
         let pass_info = vk::RenderPassBeginInfo::builder()
-            .render_pass(*self.tonemap_pass)
+            .render_pass(*self.tonemap_pass.render_pass)
             .render_area(
                 vk::Rect2D::builder()
                     .extent(ctx.surface.config.extent)
                     .build(),
             )
-            .framebuffer(self.swapchain.framebuffers[image_index])
+            .framebuffer(self.swapchain.frames.framebuffers[image_index])
             .clear_values(&clear_values)
             .build();
 
@@ -396,28 +341,25 @@ impl Renderer {
         unsafe {
             let command_buffer = self.tonemap_commands[image_index].buffer;
 
-            self.render_target
-                .0
-                .image
-                .transition_layout_ready_to_read(ctx, command_buffer);
+            self.render_target.colors[0].transition_layout_ready_to_read(ctx, command_buffer);
 
             ctx.cmd_begin_render_pass(command_buffer, &pass_info, vk::SubpassContents::INLINE);
 
             ctx.cmd_bind_pipeline(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
-                *self.tonemap_pipeline,
+                *self.tonemap_pass.pipeline,
             );
 
             ctx.cmd_set_viewport_with_count(command_buffer, &viewports);
 
             ctx.cmd_set_scissor_with_count(command_buffer, &scissors);
 
-            let descriptor_sets = [self.tonemap_descriptors.sets[image_index]];
+            let descriptor_sets = [self.tonemap_pass.descriptors.sets[image_index]];
             ctx.cmd_bind_descriptor_sets(
                 command_buffer,
                 vk::PipelineBindPoint::GRAPHICS,
-                self.tonemap_pipeline.layout,
+                self.tonemap_pass.pipeline.layout,
                 0,
                 &descriptor_sets,
                 &[],
@@ -427,10 +369,7 @@ impl Renderer {
 
             ctx.cmd_end_render_pass(command_buffer);
 
-            self.render_target
-                .0
-                .image
-                .transition_layout_ready_to_write(ctx, command_buffer);
+            self.render_target.colors[0].transition_layout_ready_to_write(ctx, command_buffer);
         }
 
         self.tonemap_commands[image_index].finish_recording(ctx);
@@ -440,16 +379,12 @@ impl Renderer {
         unsafe {
             self.swapchain.destroy_with(ctx);
         }
-        let mut setup_scope = Self::create_setup_scope(ctx);
-        self.swapchain = Swapchain::create(ctx, &mut setup_scope, *self.tonemap_pass);
-        setup_scope.finish(ctx);
+        self.swapchain = Swapchain::create(ctx, &self.tonemap_pass.render_pass);
     }
 }
 
 impl Destroy<Context> for Renderer {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        self.swapchain.destroy_with(ctx);
-
         self.state.destroy_with(ctx);
         self.uniforms.destroy_with(ctx);
 
@@ -459,16 +394,11 @@ impl Destroy<Context> for Renderer {
         self.tonemap_commands.destroy_with(ctx);
         self.offscreen_commands.destroy_with(ctx);
 
-        self.render_target.0.destroy_with(ctx);
-        self.render_target.1.destroy_with(ctx);
-        ctx.destroy_framebuffer(self.render_target.2, None);
-
-        self.tonemap_pipeline.destroy_with(ctx);
+        self.sampler.destroy_with(ctx);
+        self.swapchain.destroy_with(ctx);
         self.tonemap_pass.destroy_with(ctx);
-        self.tonemap_descriptors.destroy_with(ctx);
 
-        self.offscreen_pipeline.destroy_with(ctx);
+        self.render_target.destroy_with(ctx);
         self.offscreen_pass.destroy_with(ctx);
-        self.offscreen_descriptors.destroy_with(ctx);
     }
 }

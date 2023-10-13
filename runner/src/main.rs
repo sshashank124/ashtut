@@ -1,5 +1,5 @@
 #![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
+#![feature(adt_const_params, generic_const_exprs)]
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
 #![allow(
     clippy::cast_possible_truncation,
