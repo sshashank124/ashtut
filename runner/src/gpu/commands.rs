@@ -105,8 +105,8 @@ impl Template<false> {
 }
 
 impl Template<true> {
-    pub fn submit(&self, ctx: &Context, submit_info: &vk::SubmitInfo, fence: vk::Fence) {
-        self.submit_to_queue(ctx, submit_info, Some(fence));
+    pub fn submit(&self, ctx: &Context, submit_info: &vk::SubmitInfo, fence: Option<vk::Fence>) {
+        self.submit_to_queue(ctx, submit_info, fence);
     }
 
     pub fn reset(&self, ctx: &Context) {

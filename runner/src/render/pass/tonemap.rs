@@ -3,8 +3,15 @@ use std::ops::Deref;
 use ash::vk;
 
 use crate::gpu::{
-    context::Context, descriptors::Descriptors, image::format, pipeline::Pipeline,
-    render_pass::RenderPass, Destroy,
+    commands::Commands,
+    context::Context,
+    descriptors::Descriptors,
+    framebuffer::Framebuffers,
+    image::{format, Image},
+    pipeline::Pipeline,
+    render_pass::RenderPass,
+    sampler::Sampler,
+    Destroy,
 };
 
 use super::Pass;
@@ -17,12 +24,14 @@ mod conf {
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"frag_main\0") };
 }
 
+pub type TonemapPass = Pass<Tonemap>;
+
 pub struct Tonemap {
-    pass: Pass,
+    pub sampler: Sampler,
 }
 
 impl Tonemap {
-    pub fn create(ctx: &Context) -> Self {
+    pub fn create(ctx: &mut Context, intermediate_target: &Framebuffers<{ format::HDR }>) -> Self {
         let descriptors = Self::create_descriptors(ctx);
         let render_pass = Self::create_render_pass(ctx);
         let pipeline = Self::create_pipeline(ctx, *render_pass, descriptors.layout);
@@ -33,7 +42,17 @@ impl Tonemap {
             pipeline,
         };
 
-        Self { pass }
+        let commands = (0..ctx.surface.config.image_count)
+            .map(|_| Commands::create_on_queue(ctx, ctx.queues.graphics()))
+            .collect();
+
+        let sampler = Sampler::create(ctx);
+
+        let pass = Self { sampler };
+
+        pass.bind_descriptors(ctx, &intermediate_target.colors[0]);
+
+        pass
     }
 
     fn create_descriptors(ctx: &Context) -> Descriptors {
@@ -230,10 +249,143 @@ impl Tonemap {
 
         Pipeline { layout, pipeline }
     }
+
+    pub fn bind_descriptors(
+        &self,
+        ctx: &Context,
+        rendered_image: &Image<{ vk::Format::R32G32B32A32_SFLOAT }>,
+    ) {
+        for &set in &self.pass.descriptors.sets {
+            let rendered_image_info = [vk::DescriptorImageInfo::builder()
+                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image_view(rendered_image.view)
+                .sampler(*self.sampler)
+                .build()];
+
+            let writes = [vk::WriteDescriptorSet::builder()
+                .dst_set(set)
+                .dst_binding(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(&rendered_image_info)
+                .build()];
+
+            unsafe {
+                ctx.update_descriptor_sets(&writes, &[]);
+            }
+        }
+    }
+
+    pub fn draw(
+        &self,
+        ctx: &Context,
+        image_index: usize,
+        wait_on: &[vk::Semaphore],
+        signal_to: &[vk::Semaphore],
+        fence: vk::Fence,
+        framebuffers: (
+            &Framebuffers<{ format::HDR }>,
+            &Framebuffers<{ vk::Format::UNDEFINED }>,
+        ),
+    ) {
+        self.commands[image_index].reset(ctx);
+
+        self.record_commands(ctx, image_index, framebuffers.0, framebuffers.1);
+
+        let submit_info = vk::SubmitInfo::builder()
+            .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
+            .wait_semaphores(wait_on)
+            .signal_semaphores(signal_to);
+
+        self.commands[image_index].submit(ctx, &submit_info, Some(fence));
+    }
+
+    fn record_commands(
+        &self,
+        ctx: &Context,
+        image_index: usize,
+        intermediate_target: &Framebuffers<{ format::HDR }>,
+        render_target: &Framebuffers<{ vk::Format::UNDEFINED }>,
+    ) {
+        let clear_values = [
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0.0, 0.0, 0.0, 0.0],
+                },
+            },
+            vk::ClearValue {
+                depth_stencil: vk::ClearDepthStencilValue {
+                    depth: 1.0,
+                    stencil: 0,
+                },
+            },
+        ];
+
+        let pass_info = vk::RenderPassBeginInfo::builder()
+            .render_pass(*self.pass.render_pass)
+            .render_area(
+                vk::Rect2D::builder()
+                    .extent(ctx.surface.config.extent)
+                    .build(),
+            )
+            .framebuffer(render_target.framebuffers[image_index])
+            .clear_values(&clear_values)
+            .build();
+
+        let viewports = [vk::Viewport::builder()
+            .width(ctx.surface.config.extent.width as f32)
+            .height(ctx.surface.config.extent.height as f32)
+            .max_depth(1.0)
+            .build()];
+
+        let scissors = [vk::Rect2D::builder()
+            .extent(ctx.surface.config.extent)
+            .build()];
+
+        self.commands[image_index].begin_recording(ctx);
+
+        unsafe {
+            let command_buffer = self.commands[image_index].buffer;
+
+            intermediate_target.colors[0].transition_layout_ready_to_read(ctx, command_buffer);
+
+            ctx.cmd_begin_render_pass(command_buffer, &pass_info, vk::SubpassContents::INLINE);
+
+            ctx.cmd_bind_pipeline(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                *self.pass.pipeline,
+            );
+
+            ctx.cmd_set_viewport_with_count(command_buffer, &viewports);
+
+            ctx.cmd_set_scissor_with_count(command_buffer, &scissors);
+
+            let descriptor_sets = [self.pass.descriptors.sets[image_index]];
+            ctx.cmd_bind_descriptor_sets(
+                command_buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pass.pipeline.layout,
+                0,
+                &descriptor_sets,
+                &[],
+            );
+
+            ctx.cmd_draw(command_buffer, 3, 1, 0, 0);
+
+            ctx.cmd_end_render_pass(command_buffer);
+
+            intermediate_target.colors[0].transition_layout_ready_to_write(ctx, command_buffer);
+        }
+
+        self.commands[image_index].finish_recording(ctx);
+    }
 }
 
 impl Destroy<Context> for Tonemap {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+        self.sampler.destroy_with(ctx);
+
+        self.commands.destroy_with(ctx);
         self.pass.destroy_with(ctx);
     }
 }

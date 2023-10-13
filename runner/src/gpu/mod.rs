@@ -6,9 +6,9 @@ pub mod framebuffer;
 pub mod image;
 pub mod pipeline;
 pub mod render_pass;
-pub mod sampled_image;
 pub mod sampler;
 pub mod scope;
+pub mod texture;
 pub mod uniforms;
 pub mod vertex;
 

@@ -10,7 +10,6 @@ pub struct SyncState {
     image_available: Vec<vk::Semaphore>,
     render_finished: Vec<vk::Semaphore>,
     in_flight: Vec<vk::Fence>,
-    pub offscreen_fence: vk::Fence,
     pub current_frame: usize,
 }
 
@@ -26,13 +25,10 @@ impl SyncState {
             in_flight.push(ctx.create_fence("in_flight", true));
         }
 
-        let offscreen_fence = ctx.create_fence("offscreen", true);
-
         Self {
             image_available,
             render_finished,
             in_flight,
-            offscreen_fence,
             current_frame: 0,
         }
     }
@@ -61,6 +57,5 @@ impl Destroy<Context> for SyncState {
             ctx.destroy_semaphore(self.render_finished[i], None);
             ctx.destroy_fence(self.in_flight[i], None);
         }
-        ctx.destroy_fence(self.offscreen_fence, None);
     }
 }
