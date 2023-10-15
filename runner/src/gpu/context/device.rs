@@ -57,7 +57,7 @@ impl Device {
             device: device.clone(),
             physical_device: **physical_device,
             debug_settings: Default::default(),
-            buffer_device_address: false,
+            buffer_device_address: true,
             allocation_sizes: Default::default(),
         };
 

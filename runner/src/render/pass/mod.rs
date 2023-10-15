@@ -6,7 +6,7 @@ pub use offscreen::Offscreen;
 pub use tonemap::Tonemap;
 
 use crate::gpu::{
-    commands::Commands, context::Context, descriptors::Descriptors, framebuffer,
+    commands::Commands, context::Context, descriptors::Descriptors, framebuffers,
     pipeline::Pipeline, render_pass::RenderPass, Destroy,
 };
 
@@ -63,7 +63,7 @@ impl<T: Contents> Pass<T> {
         &self,
         ctx: &Context,
         command_set: usize,
-        render_target: &framebuffer::Framebuffers<{ TARGET_FORMAT }>,
+        render_target: &framebuffers::Framebuffers<{ TARGET_FORMAT }>,
         sync_requirements: &SyncRequirements,
     ) {
         let commands = &self.commands[command_set];
@@ -74,7 +74,7 @@ impl<T: Contents> Pass<T> {
             .render_pass(*self.render_pass)
             .render_area(T::render_area(ctx))
             .framebuffer(render_target.framebuffers[command_set])
-            .clear_values(framebuffer::CLEAR_VALUES)
+            .clear_values(framebuffers::CLEAR_VALUES)
             .build();
 
         commands.begin_recording(ctx);
@@ -104,7 +104,6 @@ impl<T: Contents> Pass<T> {
             ctx.cmd_end_render_pass(commands.buffer);
         }
         self.contents.end_pass(ctx, commands);
-        commands.finish_recording(ctx);
 
         let submit_info = vk::SubmitInfo::builder()
             .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])

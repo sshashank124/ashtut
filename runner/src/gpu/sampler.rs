@@ -18,7 +18,14 @@ impl Sampler {
             .address_mode_v(vk::SamplerAddressMode::REPEAT)
             .address_mode_w(vk::SamplerAddressMode::REPEAT)
             .anisotropy_enable(true)
-            .max_anisotropy(ctx.physical_device.properties.limits.max_sampler_anisotropy)
+            .max_anisotropy(
+                ctx.physical_device
+                    .properties
+                    .v_1_0
+                    .properties
+                    .limits
+                    .max_sampler_anisotropy,
+            )
             .unnormalized_coordinates(false)
             .compare_enable(false)
             .compare_op(vk::CompareOp::ALWAYS);

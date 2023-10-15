@@ -1,12 +1,12 @@
 use ash::{extensions::khr, vk};
 
 use crate::gpu::{
-    context::Context, framebuffer::Framebuffers, image::Image, render_pass::RenderPass, Destroy,
+    context::Context, framebuffers::Framebuffers, image::Image, render_pass::RenderPass, Destroy,
 };
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
-    pub loader: khr::Swapchain,
+    pub handle: khr::Swapchain,
     pub render_target: Framebuffers<{ vk::Format::UNDEFINED }>,
 }
 
@@ -53,14 +53,14 @@ impl Swapchain {
 
         Self {
             swapchain,
-            loader,
+            handle: loader,
             render_target,
         }
     }
 
     pub fn get_next_image(&self, signal_to: vk::Semaphore) -> (u32, bool) {
         unsafe {
-            self.loader
+            self.handle
                 .acquire_next_image(self.swapchain, u64::MAX, signal_to, vk::Fence::null())
                 .unwrap_or((0, true))
         }
@@ -82,7 +82,7 @@ impl Swapchain {
             .image_indices(&image_indices);
 
         unsafe {
-            self.loader
+            self.handle
                 .queue_present(**ctx.queues.graphics(), &present_info)
                 .unwrap_or(true)
         }
@@ -92,6 +92,6 @@ impl Swapchain {
 impl Destroy<Context> for Swapchain {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.render_target.destroy_with(ctx);
-        self.loader.destroy_swapchain(self.swapchain, None);
+        self.handle.destroy_swapchain(self.swapchain, None);
     }
 }

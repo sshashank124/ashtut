@@ -5,7 +5,7 @@ pub struct Mesh {
     pub indices: Vec<u32>,
 }
 
-mod data {
+mod data_2_planes {
     pub const INDICES: &[u32] = &[
         0, 1, 2, 0, 2, 3, // Plane 1
         4, 5, 6, 4, 6, 7, // Plane 2
@@ -48,11 +48,19 @@ impl Mesh {
         Self { vertices, indices }
     }
 
-    pub fn vertex_data_size(&self) -> usize {
+    pub fn num_primitives(&self) -> usize {
+        self.indices.len() / 3
+    }
+
+    pub fn indices_offset(&self) -> usize {
         std::mem::size_of_val(self.vertices.as_slice())
     }
 
     pub fn demo_2_planes() -> Self {
-        Self::from_slices(data::INDICES, data::POSITIONS, data::TEX_COORDS)
+        Self::from_slices(
+            data_2_planes::INDICES,
+            data_2_planes::POSITIONS,
+            data_2_planes::TEX_COORDS,
+        )
     }
 }

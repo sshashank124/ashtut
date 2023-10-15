@@ -3,13 +3,12 @@
 use shared::{
     glam::{vec2, Vec2, Vec4},
     spirv_std::{
-        self,
-        image::{Image, SampledImage},
+        image::{Image2d, SampledImage},
         spirv,
     },
 };
 
-pub type SampledImageType = Image!(2D, format = rgba32f, sampled);
+// const GAMMA: f32 = 1.0 / 2.2;
 
 #[spirv(vertex)]
 pub fn vert_main(
@@ -23,9 +22,11 @@ pub fn vert_main(
 
 #[spirv(fragment)]
 pub fn frag_main(
-    #[spirv(descriptor_set = 0, binding = 0)] sampled_texture: &SampledImage<SampledImageType>,
+    #[spirv(descriptor_set = 0, binding = 0)] texture: &SampledImage<Image2d>,
     uv: Vec2,
     color: &mut Vec4,
 ) {
-    *color = sampled_texture.sample(uv);
+    let raw = texture.sample(uv);
+    // *color = raw.powf(GAMMA);
+    *color = raw;
 }

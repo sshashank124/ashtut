@@ -1,16 +1,14 @@
 pub mod pass;
-mod swapchain;
 mod sync_state;
 
 use shared::UniformObjects;
 
 use crate::gpu::{
-    context::Context, framebuffer::Framebuffers, image::Image, scope::Scope, Destroy,
+    context::Context, framebuffers::Framebuffers, image::Image, swapchain::Swapchain, Destroy,
 };
 
 use self::{
     pass::{Offscreen, Pass, Tonemap},
-    swapchain::Swapchain,
     sync_state::{SyncRequirements, SyncState},
 };
 
@@ -37,10 +35,8 @@ pub enum Error {
 
 impl Renderer {
     pub fn create(ctx: &mut Context) -> Self {
-        let mut setup_scope = Scope::begin_on(ctx, ctx.queues.graphics());
-
         let offscreen_pass = {
-            let contents = Offscreen::create(ctx, &mut setup_scope);
+            let contents = Offscreen::create(ctx);
             Pass::create(ctx, contents)
         };
 
@@ -63,8 +59,6 @@ impl Renderer {
         };
 
         let swapchain = Swapchain::create(ctx, &tonemap_pass.render_pass);
-
-        setup_scope.finish(ctx);
 
         let state = SyncState::create(ctx);
 

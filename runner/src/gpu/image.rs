@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use ash::vk;
 
-use super::{alloc, buffer::Buffer, context::Context, scope::Scope, Destroy};
+use super::{alloc, buffer::Buffer, context::Context, scope::OneshotScope, Destroy};
 
 pub mod format {
     pub const HDR: ash::vk::Format = ash::vk::Format::R32G32B32A32_SFLOAT;
@@ -191,7 +191,7 @@ impl Image<{ format::HDR }> {
 impl Image<{ format::COLOR }> {
     pub fn create_from_image(
         ctx: &mut Context,
-        scope: &mut Scope,
+        scope: &mut OneshotScope,
         name: &str,
         img: &image::RgbaImage,
     ) -> Self {

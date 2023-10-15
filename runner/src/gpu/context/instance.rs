@@ -7,9 +7,7 @@ use std::{
 use ash::vk;
 use winit::window::Window;
 
-use super::{
-    features, physical_device::PhysicalDevice, queue, surface, validator::Validator, Destroy,
-};
+use super::{physical_device::PhysicalDevice, queue, surface, validator::Validator, Destroy};
 
 mod conf {
     pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 0);
@@ -81,27 +79,25 @@ impl Instance {
 
         let (physical_device, queue_families, surface_config_options) = all_devices
             .into_iter()
-            .filter(|&physical_device| {
-                self.has_required_device_extensions(physical_device)
-                    && features::Features::get_supported(self, physical_device)
-                        .supports_requirements()
+            .filter(|&physical_device| self.has_required_device_extensions(physical_device))
+            .filter_map(|pd| {
+                let physical_device = PhysicalDevice::new(self, pd);
+                physical_device
+                    .features
+                    .supports_requirements()
+                    .then_some(physical_device)
             })
             .filter_map(|physical_device| {
-                queue::Families::find(self, physical_device, surface)
-                    .map(|queue_families| (physical_device, queue_families))
-            })
-            .map(|(physical_device, queue_families)| {
-                (
-                    physical_device,
-                    queue_families,
-                    surface.get_config_options_for(physical_device),
-                )
+                queue::Families::find(self, &physical_device, surface).map(|queue_families| {
+                    let surface_config_options = surface.get_config_options_for(&physical_device);
+                    (physical_device, queue_families, surface_config_options)
+                })
             })
             .find(|(_, _, surface_config_options)| Self::is_suitable(surface_config_options))
             .expect("Failed to find a suitable physical device");
 
         (
-            PhysicalDevice::new(self, physical_device),
+            physical_device,
             queue_families,
             surface_config_options.get_optimal(),
         )
@@ -129,8 +125,8 @@ impl Instance {
 }
 
 impl Destroy<()> for Instance {
-    unsafe fn destroy_with(&mut self, input: &mut ()) {
-        self.validator.destroy_with(input);
+    unsafe fn destroy_with(&mut self, ctx: &mut ()) {
+        self.validator.destroy_with(ctx);
         self.instance.destroy_instance(None);
     }
 }

@@ -4,7 +4,7 @@ use ash::vk;
 
 use shared::bytemuck;
 
-use super::{alloc, context::Context, scope::Scope, Destroy};
+use super::{alloc, context::Context, scope::OneshotScope, Destroy};
 
 pub struct Buffer {
     buffer: vk::Buffer,
@@ -63,7 +63,7 @@ impl Buffer {
 
     pub fn create_with_staged_data(
         ctx: &mut Context,
-        scope: &mut Scope,
+        scope: &mut OneshotScope,
         name: &str,
         mut info: vk::BufferCreateInfo,
         data_sources: &[&[u8]],
@@ -122,6 +122,15 @@ impl Buffer {
 
         unsafe {
             ctx.cmd_copy_buffer(command_buffer, **src, **self, &copy_info);
+        }
+    }
+
+    pub fn get_device_address(&self, ctx: &Context) -> vk::DeviceAddress {
+        unsafe {
+            ctx.get_buffer_device_address(&vk::BufferDeviceAddressInfo {
+                buffer: self.buffer,
+                ..Default::default()
+            })
         }
     }
 }

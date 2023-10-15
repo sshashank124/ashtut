@@ -10,7 +10,7 @@ use shared::{
     UniformObjects, Vertex,
 };
 
-pub type SampledImageType = Image!(2D, format = rgba8, sampled);
+pub type TextureFormat = Image!(2D, format = rgba8, sampled);
 
 #[spirv(vertex)]
 pub fn vert_main(
@@ -27,8 +27,8 @@ pub fn vert_main(
 #[spirv(fragment)]
 pub fn frag_main(
     tex_coord: Vec2,
-    #[spirv(descriptor_set = 0, binding = 1)] sampled_texture: &SampledImage<SampledImageType>,
+    #[spirv(descriptor_set = 0, binding = 1)] texture: &SampledImage<TextureFormat>,
     out_color: &mut Vec4,
 ) {
-    *out_color = sampled_texture.sample(tex_coord);
+    *out_color = texture.sample(tex_coord);
 }

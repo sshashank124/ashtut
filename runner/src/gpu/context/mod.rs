@@ -2,6 +2,7 @@ mod device;
 mod features;
 mod instance;
 mod physical_device;
+mod properties;
 pub mod queue;
 mod surface;
 mod validator;
@@ -47,10 +48,10 @@ impl Context {
 }
 
 impl Destroy<()> for Context {
-    unsafe fn destroy_with(&mut self, input: &mut ()) {
-        self.device.destroy_with(input);
-        self.surface.destroy_with(input);
-        self.instance.destroy_with(input);
+    unsafe fn destroy_with(&mut self, ctx: &mut ()) {
+        self.device.destroy_with(ctx);
+        self.surface.destroy_with(ctx);
+        self.instance.destroy_with(ctx);
     }
 }
 

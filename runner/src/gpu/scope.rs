@@ -1,16 +1,23 @@
+use ash::vk;
+
 use super::{
-    commands::TempCommands,
+    commands::CommandsT,
     context::{queue::Queue, Context},
     Destroy,
 };
 
-pub struct Scope {
-    pub commands: TempCommands,
+#[allow(clippy::module_name_repetitions)]
+pub type OneshotScope = Scope<false>;
+#[allow(clippy::module_name_repetitions)]
+pub type FlushableScope = Scope<true>;
+
+pub struct Scope<const MULTI_USE: bool> {
+    pub commands: CommandsT<{ MULTI_USE }>,
     pub resources: Vec<Box<dyn Destroy<Context>>>,
 }
 
-impl Scope {
-    fn create(commands: TempCommands) -> Self {
+impl<const MULTI_USE: bool> Scope<{ MULTI_USE }> {
+    fn create(commands: CommandsT<{ MULTI_USE }>) -> Self {
         Self {
             commands,
             resources: Vec::new(),
@@ -18,7 +25,7 @@ impl Scope {
     }
 
     pub fn begin_on(ctx: &Context, queue: &Queue) -> Self {
-        let scope = Self::create(TempCommands::create_on_queue(ctx, queue));
+        let scope = Self::create(CommandsT::create_on_queue(ctx, queue));
         scope.commands.begin_recording(ctx);
         scope
     }
@@ -28,13 +35,12 @@ impl Scope {
     }
 
     pub fn finish(mut self, ctx: &mut Context) {
-        self.commands.finish_recording(ctx);
-        self.commands.submit(ctx);
+        self.commands.submit(ctx, &vk::SubmitInfo::default(), None);
         unsafe { self.destroy_with(ctx) };
     }
 }
 
-impl Destroy<Context> for Scope {
+impl<const MULTI_USE: bool> Destroy<Context> for Scope<{ MULTI_USE }> {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.resources
             .iter_mut()

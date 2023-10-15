@@ -52,7 +52,7 @@ impl Surface {
 
     pub fn refresh_capabilities(&mut self, physical_device: &PhysicalDevice) -> bool {
         self.config
-            .update_with(&self.get_capabilities(**physical_device));
+            .update_with(&self.get_capabilities(physical_device));
         self.config.valid_extent()
     }
 }
@@ -64,19 +64,16 @@ impl Handle {
         Self { surface, loader }
     }
 
-    pub fn get_config_options_for(
-        &self,
-        physical_device: vk::PhysicalDevice,
-    ) -> ConfigurationOptions {
+    pub fn get_config_options_for(&self, physical_device: &PhysicalDevice) -> ConfigurationOptions {
         let capabilities = self.get_capabilities(physical_device);
         let surface_formats = unsafe {
             self.loader
-                .get_physical_device_surface_formats(physical_device, self.surface)
+                .get_physical_device_surface_formats(**physical_device, self.surface)
                 .expect("Failed to get surface formats")
         };
         let present_modes = unsafe {
             self.loader
-                .get_physical_device_surface_present_modes(physical_device, self.surface)
+                .get_physical_device_surface_present_modes(**physical_device, self.surface)
                 .expect("Failed to get surface present modes")
         };
 
@@ -87,26 +84,23 @@ impl Handle {
         }
     }
 
-    pub fn get_capabilities(
-        &self,
-        physical_device: vk::PhysicalDevice,
-    ) -> vk::SurfaceCapabilitiesKHR {
+    pub fn get_capabilities(&self, physical_device: &PhysicalDevice) -> vk::SurfaceCapabilitiesKHR {
         unsafe {
             self.loader
-                .get_physical_device_surface_capabilities(physical_device, self.surface)
+                .get_physical_device_surface_capabilities(**physical_device, self.surface)
                 .expect("Failed to get surface capabilities")
         }
     }
 
     pub fn is_supported_by(
         &self,
-        physical_device: vk::PhysicalDevice,
+        physical_device: &PhysicalDevice,
         queue_family_index: u32,
     ) -> bool {
         unsafe {
             self.loader
                 .get_physical_device_surface_support(
-                    physical_device,
+                    **physical_device,
                     queue_family_index,
                     self.surface,
                 )
@@ -188,8 +182,8 @@ impl Config {
 }
 
 impl Destroy<()> for Surface {
-    unsafe fn destroy_with(&mut self, input: &mut ()) {
-        self.handle.destroy_with(input);
+    unsafe fn destroy_with(&mut self, ctx: &mut ()) {
+        self.handle.destroy_with(ctx);
     }
 }
 

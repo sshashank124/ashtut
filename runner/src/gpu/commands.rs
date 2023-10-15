@@ -6,17 +6,16 @@ use super::{
 };
 
 #[allow(clippy::module_name_repetitions)]
-pub type TempCommands = CommandsTemplate<false>;
-pub type Commands = CommandsTemplate<true>;
+pub type Commands = CommandsT<true>;
 
 #[allow(clippy::module_name_repetitions)]
-pub struct CommandsTemplate<const MULTI_USE: bool> {
+pub struct CommandsT<const MULTI_USE: bool> {
     queue: vk::Queue,
     pool: vk::CommandPool,
     pub buffer: vk::CommandBuffer,
 }
 
-impl<const MULTI_USE: bool> CommandsTemplate<{ MULTI_USE }> {
+impl<const MULTI_USE: bool> CommandsT<{ MULTI_USE }> {
     pub fn create_on_queue(ctx: &Context, queue: &Queue) -> Self {
         let pool = {
             let transient_flag = if MULTI_USE {
@@ -63,19 +62,14 @@ impl<const MULTI_USE: bool> CommandsTemplate<{ MULTI_USE }> {
         }
     }
 
-    pub fn finish_recording(&self, ctx: &Context) {
+    fn finish_recording(&self, ctx: &Context) {
         unsafe {
             ctx.end_command_buffer(self.buffer)
                 .expect("Failed to end recording commands");
         }
     }
 
-    fn submit_to_queue(
-        &self,
-        ctx: &Context,
-        submit_info: &vk::SubmitInfo,
-        fence: Option<vk::Fence>,
-    ) {
+    pub fn submit(&self, ctx: &Context, submit_info: &vk::SubmitInfo, fence: Option<vk::Fence>) {
         let command_buffers = [self.buffer];
         let submit_info = [vk::SubmitInfo {
             command_buffer_count: command_buffers.len() as _,
@@ -84,6 +78,8 @@ impl<const MULTI_USE: bool> CommandsTemplate<{ MULTI_USE }> {
         }];
 
         unsafe {
+            self.finish_recording(ctx);
+
             ctx.queue_submit(
                 self.queue,
                 &submit_info,
@@ -99,26 +95,22 @@ impl<const MULTI_USE: bool> CommandsTemplate<{ MULTI_USE }> {
     }
 }
 
-impl CommandsTemplate<false> {
-    pub fn submit(&self, ctx: &Context) {
-        self.submit_to_queue(ctx, &vk::SubmitInfo::default(), None);
-    }
-}
-
-impl CommandsTemplate<true> {
-    pub fn submit(&self, ctx: &Context, submit_info: &vk::SubmitInfo, fence: Option<vk::Fence>) {
-        self.submit_to_queue(ctx, submit_info, fence);
-    }
-
+impl CommandsT<true> {
     pub fn reset(&self, ctx: &Context) {
         unsafe {
             ctx.reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty())
                 .expect("Failed to reset command pool");
         }
     }
+
+    pub fn flush(&self, ctx: &Context) {
+        self.submit(ctx, &vk::SubmitInfo::default(), None);
+        self.reset(ctx);
+        self.begin_recording(ctx);
+    }
 }
 
-impl<const MULTI_USE: bool> Destroy<Context> for CommandsTemplate<{ MULTI_USE }> {
+impl<const MULTI_USE: bool> Destroy<Context> for CommandsT<{ MULTI_USE }> {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         ctx.destroy_command_pool(self.pool, None);
     }

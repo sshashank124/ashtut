@@ -1,5 +1,3 @@
-use std::mem;
-
 use ash::vk;
 
 use shared::{bytemuck, Vertex};
@@ -13,7 +11,7 @@ impl Descriptions for Vertex {
     fn bindings_description() -> [Self::BindingType; Self::NUM_BINDINGS] {
         [vk::VertexInputBindingDescription {
             binding: 0,
-            stride: mem::size_of::<Self>() as u32,
+            stride: Self::size() as _,
             input_rate: vk::VertexInputRate::VERTEX,
         }]
     }
@@ -27,13 +25,13 @@ impl Descriptions for Vertex {
                 binding: 0,
                 location: 0,
                 format: vk::Format::R32G32B32_SFLOAT,
-                offset: bytemuck::offset_of!(Self, position) as u32,
+                offset: bytemuck::offset_of!(Self, position) as _,
             },
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 1,
                 format: vk::Format::R32G32_SFLOAT,
-                offset: bytemuck::offset_of!(Self, tex_coord) as u32,
+                offset: bytemuck::offset_of!(Self, tex_coord) as _,
             },
         ]
     }

@@ -1,21 +1,10 @@
 use ash::vk;
-use shared::{bytemuck, Vertex};
+use shared::Vertex;
 
-use crate::{
-    gpu::{
-        buffer::Buffer,
-        commands::Commands,
-        context::Context,
-        descriptors::Descriptors,
-        image::{format, Image},
-        pipeline::Pipeline,
-        render_pass::RenderPass,
-        scope::Scope,
-        texture::Texture,
-        uniforms::Uniforms,
-        Descriptions, Destroy,
-    },
-    model::Model,
+use crate::gpu::{
+    acceleration_structure::AccelerationStructures, commands::Commands, context::Context,
+    descriptors::Descriptors, image::format, model::Model, pipeline::Pipeline,
+    render_pass::RenderPass, scope::OneshotScope, uniforms::Uniforms, Descriptions, Destroy,
 };
 
 use super::Contents;
@@ -34,54 +23,26 @@ pub mod conf {
 
 pub struct Offscreen {
     pub uniforms: Uniforms,
-    model: Model,
-    vertex_index_buffer: Buffer,
-    texture: Texture<{ format::COLOR }>,
+    models: Vec<Model>,
+    acceleration_structure: AccelerationStructures,
 }
 
 impl Offscreen {
-    pub fn create(ctx: &mut Context, setup_scope: &mut Scope) -> Self {
+    pub fn create(ctx: &mut Context) -> Self {
+        let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.graphics());
+
         let uniforms = Uniforms::create(ctx);
-        let model = Model::demo_viking_room();
-        let vertex_index_buffer = Self::init_vertex_index_buffer(ctx, setup_scope, &model);
-        let texture = Self::init_texture(ctx, setup_scope, &model);
+        let models = vec![Model::demo_viking_room(ctx, &mut init_scope)];
+
+        init_scope.finish(ctx);
+
+        let acceleration_structure = AccelerationStructures::build_blases_for_models(ctx, &models);
 
         Self {
             uniforms,
-            model,
-            vertex_index_buffer,
-            texture,
+            models,
+            acceleration_structure,
         }
-    }
-
-    fn init_vertex_index_buffer(
-        ctx: &mut Context,
-        setup_scope: &mut Scope,
-        model: &Model,
-    ) -> Buffer {
-        let data_sources = &[
-            bytemuck::cast_slice(&model.mesh.vertices),
-            bytemuck::cast_slice(&model.mesh.indices),
-        ];
-        let create_info = vk::BufferCreateInfo::builder()
-            .usage(vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER);
-
-        Buffer::create_with_staged_data(
-            ctx,
-            setup_scope,
-            "Vertex+Index Buffer",
-            *create_info,
-            data_sources,
-        )
-    }
-
-    fn init_texture(
-        ctx: &mut Context,
-        setup_scope: &mut Scope,
-        model: &Model,
-    ) -> Texture<{ format::COLOR }> {
-        let image = Image::create_from_image(ctx, setup_scope, "Texture", &model.texture);
-        Texture::from_image(ctx, image)
     }
 }
 
@@ -319,8 +280,8 @@ impl Contents for Offscreen {
 
         let sampled_image_info = [vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(self.texture.image.view)
-            .sampler(*self.texture.sampler)
+            .image_view(self.models[0].texture.image.view)
+            .sampler(*self.models[0].texture.sampler)
             .build()];
 
         let writes = [
@@ -345,19 +306,19 @@ impl Contents for Offscreen {
 
     fn record_commands(&self, ctx: &Context, commands: &Commands) {
         unsafe {
-            let vertex_buffers = [*self.vertex_index_buffer];
+            let vertex_buffers = [*self.models[0].vertex_index_buffer];
             ctx.cmd_bind_vertex_buffers(commands.buffer, 0, &vertex_buffers, &[0]);
 
             ctx.cmd_bind_index_buffer(
                 commands.buffer,
-                *self.vertex_index_buffer,
-                self.model.mesh.vertex_data_size() as u64,
+                *self.models[0].vertex_index_buffer,
+                self.models[0].mesh.indices_offset() as _,
                 vk::IndexType::UINT32,
             );
 
             ctx.cmd_draw_indexed(
                 commands.buffer,
-                self.model.mesh.indices.len() as u32,
+                self.models[0].mesh.indices.len() as _,
                 1,
                 0,
                 0,
@@ -369,8 +330,8 @@ impl Contents for Offscreen {
 
 impl Destroy<Context> for Offscreen {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        self.texture.destroy_with(ctx);
-        self.vertex_index_buffer.destroy_with(ctx);
+        self.acceleration_structure.destroy_with(ctx);
+        self.models.destroy_with(ctx);
         self.uniforms.destroy_with(ctx);
     }
 }

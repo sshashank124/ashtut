@@ -10,7 +10,7 @@
 
 mod app;
 mod gpu;
-mod model;
+mod mesh;
 mod render;
 mod util;
 
