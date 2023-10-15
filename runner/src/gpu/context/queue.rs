@@ -6,6 +6,7 @@ use super::{instance::Instance, physical_device::PhysicalDevice, surface::Handle
 
 pub struct Queues {
     graphics: Queue,
+    compute: Queue,
 }
 
 pub struct Queue {
@@ -15,22 +16,29 @@ pub struct Queue {
 
 pub struct Families {
     pub graphics: u32,
+    pub compute: u32,
 }
 
 #[derive(Debug, Default)]
 struct FamiliesInfo {
     graphics: Option<u32>,
+    compute: Option<u32>,
 }
 
 impl Queues {
     pub fn create(device: &ash::Device, families: &Families) -> Self {
         let graphics = Queue::create(device, families.graphics);
+        let compute = Queue::create(device, families.compute);
 
-        Self { graphics }
+        Self { graphics, compute }
     }
 
     pub const fn graphics(&self) -> &Queue {
         &self.graphics
+    }
+
+    pub const fn compute(&self) -> &Queue {
+        &self.compute
     }
 
     pub fn create_infos(indices: &Families) -> Vec<vk::DeviceQueueCreateInfo> {
@@ -60,7 +68,7 @@ impl Queue {
 
 impl Families {
     pub fn unique(&self) -> HashSet<u32> {
-        HashSet::from([self.graphics])
+        HashSet::from([self.graphics, self.compute])
     }
 
     pub fn find(
@@ -83,8 +91,12 @@ impl Families {
             let c = queue_family.queue_flags.contains(vk::QueueFlags::COMPUTE);
             let t = queue_family.queue_flags.contains(vk::QueueFlags::TRANSFER);
 
-            if g && c && t && surface.is_supported_by(physical_device, index as u32) {
+            if g && t && surface.is_supported_by(physical_device, index as u32) {
                 found_indices.graphics = Some(index as u32);
+            }
+
+            if !g && c && t {
+                found_indices.compute = Some(index as u32);
             }
 
             if found_indices.is_complete() {
@@ -108,12 +120,13 @@ impl TryFrom<FamiliesInfo> for Families {
     fn try_from(value: FamiliesInfo) -> Result<Self, Self::Error> {
         Ok(Self {
             graphics: value.graphics.ok_or(())?,
+            compute: value.compute.ok_or(())?,
         })
     }
 }
 
 impl FamiliesInfo {
     pub const fn is_complete(&self) -> bool {
-        self.graphics.is_some()
+        self.graphics.is_some() && self.compute.is_some()
     }
 }

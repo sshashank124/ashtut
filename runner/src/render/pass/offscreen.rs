@@ -24,7 +24,7 @@ pub mod conf {
 pub struct Offscreen {
     pub uniforms: Uniforms,
     models: Vec<Model>,
-    acceleration_structure: AccelerationStructures,
+    accels: AccelerationStructures,
 }
 
 impl Offscreen {
@@ -36,12 +36,12 @@ impl Offscreen {
 
         init_scope.finish(ctx);
 
-        let acceleration_structure = AccelerationStructures::build_blases_for_models(ctx, &models);
+        let accels = AccelerationStructures::build(ctx, &models);
 
         Self {
             uniforms,
             models,
-            acceleration_structure,
+            accels,
         }
     }
 }
@@ -330,7 +330,7 @@ impl Contents for Offscreen {
 
 impl Destroy<Context> for Offscreen {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        self.acceleration_structure.destroy_with(ctx);
+        self.accels.destroy_with(ctx);
         self.models.destroy_with(ctx);
         self.uniforms.destroy_with(ctx);
     }
