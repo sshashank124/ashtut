@@ -3,7 +3,6 @@ use ash::vk;
 use super::{
     context::Context,
     image::{format, Image},
-    render_pass::RenderPass,
     Destroy,
 };
 
@@ -31,7 +30,7 @@ impl<const FORMAT: vk::Format> Framebuffers<{ FORMAT }> {
     pub fn create_for_images(
         ctx: &mut Context,
         name: &str,
-        render_pass: &RenderPass,
+        render_pass: vk::RenderPass,
         resolution: vk::Extent2D,
         colors: Vec<Image<{ FORMAT }>>,
     ) -> Self {
@@ -48,7 +47,7 @@ impl<const FORMAT: vk::Format> Framebuffers<{ FORMAT }> {
             .map(|image| {
                 let attachments = [image.view, depth.view];
                 let info = vk::FramebufferCreateInfo::builder()
-                    .render_pass(**render_pass)
+                    .render_pass(render_pass)
                     .attachments(&attachments)
                     .width(resolution.width)
                     .height(resolution.height)
@@ -68,7 +67,7 @@ impl<const FORMAT: vk::Format> Framebuffers<{ FORMAT }> {
     pub fn create_new(
         ctx: &mut Context,
         name: &str,
-        render_pass: &RenderPass,
+        render_pass: vk::RenderPass,
         resolution: vk::Extent2D,
     ) -> Self {
         let colors = {

@@ -2,12 +2,12 @@ use ash::vk;
 use shared::Vertex;
 
 use crate::gpu::{
+    acceleration_structure::AccelerationStructures,
     commands::Commands,
     context::Context,
     descriptors::Descriptors,
-    image::format,
     model::Model,
-    pipeline::{Contents, Graphics, Pipeline},
+    pipeline::{Contents, RayTrace},
     scope::OneshotScope,
     uniforms::Uniforms,
     Descriptions, Destroy,
@@ -25,15 +25,13 @@ pub mod conf {
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"frag_main\0") };
 }
 
-type Spec = Graphics<{ super::super::conf::OUTPUT_IMAGE_FORMAT }>;
-pub type OffscreenPipeline = Pipeline<Spec, Offscreen>;
-
-pub struct Offscreen {
+pub struct PathTracer {
     pub uniforms: Uniforms,
     models: Vec<Model>,
+    accels: AccelerationStructures,
 }
 
-impl Offscreen {
+impl PathTracer {
     pub fn create(ctx: &mut Context) -> Self {
         let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.graphics());
 
@@ -42,11 +40,17 @@ impl Offscreen {
 
         init_scope.finish(ctx);
 
-        Self { uniforms, models }
+        let accels = AccelerationStructures::build(ctx, &models);
+
+        Self {
+            uniforms,
+            models,
+            accels,
+        }
     }
 }
 
-impl Contents<Spec> for Offscreen {
+impl Contents<RayTrace> for PathTracer {
     fn num_command_sets(_: &Context) -> u32 {
         1
     }
@@ -63,15 +67,15 @@ impl Contents<Spec> for Offscreen {
             let bindings = [
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(0)
-                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
                     .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::VERTEX)
+                    .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
                     .build(),
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(1)
-                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
                     .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+                    .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
                     .build(),
             ];
             let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
@@ -84,11 +88,11 @@ impl Contents<Spec> for Offscreen {
         let pool = {
             let sizes = [
                 vk::DescriptorPoolSize::builder()
-                    .ty(vk::DescriptorType::UNIFORM_BUFFER)
+                    .ty(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
                     .descriptor_count(1)
                     .build(),
                 vk::DescriptorPoolSize::builder()
-                    .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .ty(vk::DescriptorType::STORAGE_IMAGE)
                     .descriptor_count(1)
                     .build(),
             ];
@@ -115,65 +119,13 @@ impl Contents<Spec> for Offscreen {
         Descriptors { layout, pool, sets }
     }
 
-    fn create_specialization(ctx: &Context) -> Spec {
-        let attachments = [
-            vk::AttachmentDescription::builder()
-                .format(super::super::conf::OUTPUT_IMAGE_FORMAT)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .initial_layout(vk::ImageLayout::UNDEFINED)
-                .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .build(),
-            vk::AttachmentDescription::builder()
-                .format(format::DEPTH)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .initial_layout(vk::ImageLayout::UNDEFINED)
-                .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                .build(),
-        ];
-
-        let color_attachment_references = [vk::AttachmentReference::builder()
-            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .attachment(0)
-            .build()];
-
-        let depth_attachment_reference = vk::AttachmentReference::builder()
-            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-            .attachment(1);
-
-        let subpasses = [vk::SubpassDescription::builder()
-            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-            .color_attachments(&color_attachment_references)
-            .depth_stencil_attachment(&depth_attachment_reference)
-            .build()];
-
-        let dependencies = [vk::SubpassDependency::builder()
-            .src_subpass(vk::SUBPASS_EXTERNAL)
-            .dst_subpass(0)
-            .src_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
-            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-            .src_access_mask(vk::AccessFlags::SHADER_READ)
-            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-            .build()];
-
-        let render_pass_info = vk::RenderPassCreateInfo::builder()
-            .attachments(&attachments)
-            .subpasses(&subpasses)
-            .dependencies(&dependencies);
-
-        Graphics::create(ctx, &render_pass_info)
+    fn create_specialization(ctx: &Context) -> RayTrace {
+        RayTrace::create()
     }
 
     fn create_pipeline(
         ctx: &Context,
-        spec: &Spec,
+        spec: &RayTrace,
         descriptor_set_layout: vk::DescriptorSetLayout,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
         let shader_module = ctx.create_shader_module_from_file(conf::SHADER_FILE);
@@ -259,7 +211,6 @@ impl Contents<Spec> for Offscreen {
             .color_blend_state(&color_blend_info)
             .depth_stencil_state(&depth_stencil_info)
             .layout(layout)
-            .render_pass(spec.render_pass)
             .build()];
 
         let pipeline = unsafe {
@@ -273,13 +224,12 @@ impl Contents<Spec> for Offscreen {
     }
 
     fn bind_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
-        let buffer_infos = [vk::DescriptorBufferInfo::builder()
-            .buffer(*self.uniforms.buffer)
-            .range(vk::WHOLE_SIZE)
-            .build()];
+        let tlas = [*self.accels.tlas];
+        let mut accel_info = vk::WriteDescriptorSetAccelerationStructureKHR::builder()
+            .acceleration_structures(&tlas);
 
         let sampled_image_info = [vk::DescriptorImageInfo::builder()
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_layout(vk::ImageLayout::GENERAL)
             .image_view(self.models[0].texture.image.view)
             .sampler(*self.models[0].texture.sampler)
             .build()];
@@ -287,14 +237,14 @@ impl Contents<Spec> for Offscreen {
         let writes = [
             vk::WriteDescriptorSet::builder()
                 .dst_set(descriptors.sets[0])
+                .push_next(&mut accel_info)
                 .dst_binding(0)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(&buffer_infos)
+                .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
                 .build(),
             vk::WriteDescriptorSet::builder()
                 .dst_set(descriptors.sets[0])
                 .dst_binding(1)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
                 .image_info(&sampled_image_info)
                 .build(),
         ];
@@ -328,8 +278,9 @@ impl Contents<Spec> for Offscreen {
     }
 }
 
-impl Destroy<Context> for Offscreen {
+impl Destroy<Context> for PathTracer {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+        self.accels.destroy_with(ctx);
         self.models.destroy_with(ctx);
         self.uniforms.destroy_with(ctx);
     }

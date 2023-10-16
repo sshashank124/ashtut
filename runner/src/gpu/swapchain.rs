@@ -1,8 +1,6 @@
 use ash::{extensions::khr, vk};
 
-use crate::gpu::{
-    context::Context, framebuffers::Framebuffers, image::Image, render_pass::RenderPass, Destroy,
-};
+use crate::gpu::{context::Context, framebuffers::Framebuffers, image::Image, Destroy};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
@@ -11,7 +9,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn create(ctx: &mut Context, render_pass: &RenderPass) -> Self {
+    pub fn create(ctx: &mut Context, render_pass: vk::RenderPass) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(**ctx.surface)
             .min_image_count(ctx.surface.config.image_count)

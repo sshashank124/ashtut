@@ -13,13 +13,6 @@ pub struct SyncState {
     pub current_frame: usize,
 }
 
-#[derive(Default)]
-pub struct SyncRequirements<'a> {
-    pub wait_on: &'a [vk::Semaphore],
-    pub signal_to: &'a [vk::Semaphore],
-    pub fence: Option<vk::Fence>,
-}
-
 impl SyncState {
     pub fn create(ctx: &Context) -> Self {
         let mut image_available = Vec::with_capacity(conf::MAX_FRAMES_IN_FLIGHT);

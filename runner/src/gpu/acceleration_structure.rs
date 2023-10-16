@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{ops::Deref, rc::Rc};
 
 use ash::{extensions::khr, vk};
 use shared::{bytemuck, Vertex};
@@ -9,7 +9,7 @@ use super::{buffer::Buffer, context::Context, Descriptions, Destroy};
 
 pub struct AccelerationStructures {
     blases: Vec<AccelerationStructure>,
-    tlas: AccelerationStructure,
+    pub tlas: AccelerationStructure,
 }
 
 pub struct AccelerationStructure {
@@ -420,5 +420,12 @@ impl Destroy<Context> for AccelerationStructure {
 impl Destroy<Context> for InstancesInfo {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.buffer.destroy_with(ctx);
+    }
+}
+
+impl Deref for AccelerationStructure {
+    type Target = vk::AccelerationStructureKHR;
+    fn deref(&self) -> &Self::Target {
+        &self.accel
     }
 }

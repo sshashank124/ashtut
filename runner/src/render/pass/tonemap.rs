@@ -5,13 +5,10 @@ use crate::gpu::{
     context::Context,
     descriptors::Descriptors,
     image::{format, Image},
-    pipeline::Pipeline,
-    render_pass::RenderPass,
+    pipeline::{Contents, Graphics, Pipeline},
     sampler::Sampler,
     Destroy,
 };
-
-use super::Contents;
 
 mod conf {
     pub const SHADER_FILE: &str = env!("tonemap.spv");
@@ -21,15 +18,18 @@ mod conf {
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"frag_main\0") };
 }
 
+type Spec = Graphics<{ vk::Format::UNDEFINED }>;
+pub type TonemapPipeline = Pipeline<Spec, Tonemap>;
+
 pub struct Tonemap {
-    input_image: Image<{ super::super::conf::INTERMEDIATE_IMAGE_FORMAT }>,
+    input_image: Image<{ super::super::conf::OUTPUT_IMAGE_FORMAT }>,
     sampler: Sampler,
 }
 
 impl Tonemap {
     pub fn create_for(
         ctx: &Context,
-        input_image: Image<{ super::super::conf::INTERMEDIATE_IMAGE_FORMAT }>,
+        input_image: Image<{ super::super::conf::OUTPUT_IMAGE_FORMAT }>,
     ) -> Self {
         Self {
             input_image,
@@ -38,7 +38,7 @@ impl Tonemap {
     }
 }
 
-impl Contents for Tonemap {
+impl Contents<Spec> for Tonemap {
     fn num_command_sets(ctx: &Context) -> u32 {
         ctx.surface.config.image_count
     }
@@ -94,7 +94,7 @@ impl Contents for Tonemap {
         Descriptors { layout, pool, sets }
     }
 
-    fn create_render_pass(ctx: &Context) -> RenderPass {
+    fn create_specialization(ctx: &Context) -> Spec {
         let attachments = [
             vk::AttachmentDescription::builder()
                 .format(ctx.surface.config.surface_format.format)
@@ -142,19 +142,19 @@ impl Contents for Tonemap {
             .dst_access_mask(vk::AccessFlags::SHADER_READ)
             .build()];
 
-        let info = vk::RenderPassCreateInfo::builder()
+        let render_pass_info = vk::RenderPassCreateInfo::builder()
             .attachments(&attachments)
             .subpasses(&subpasses)
             .dependencies(&dependencies);
 
-        RenderPass::create(ctx, &info)
+        Graphics::create(ctx, &render_pass_info)
     }
 
     fn create_pipeline(
         ctx: &Context,
-        render_pass: &RenderPass,
+        spec: &Spec,
         descriptor_set_layout: vk::DescriptorSetLayout,
-    ) -> Pipeline {
+    ) -> (vk::PipelineLayout, vk::Pipeline) {
         let shader_module = ctx.create_shader_module_from_file(conf::SHADER_FILE);
         let shader_stages = [
             vk::PipelineShaderStageCreateInfo::builder()
@@ -231,7 +231,7 @@ impl Contents for Tonemap {
             .color_blend_state(&color_blend_info)
             .depth_stencil_state(&depth_stencil_info)
             .layout(layout)
-            .render_pass(**render_pass)
+            .render_pass(spec.render_pass)
             .dynamic_state(&dynamic_state_info)
             .build()];
 
@@ -242,7 +242,7 @@ impl Contents for Tonemap {
 
         unsafe { ctx.destroy_shader_module(shader_module, None) };
 
-        Pipeline { layout, pipeline }
+        (layout, pipeline)
     }
 
     fn bind_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
@@ -266,7 +266,7 @@ impl Contents for Tonemap {
         }
     }
 
-    fn begin_pass(&self, ctx: &Context, commands: &Commands) {
+    fn pre_pass(&self, ctx: &Context, commands: &Commands) {
         self.input_image
             .transition_layout_ready_to_read(ctx, commands.buffer);
     }
@@ -289,7 +289,7 @@ impl Contents for Tonemap {
         }
     }
 
-    fn end_pass(&self, ctx: &Context, commands: &Commands) {
+    fn post_pass(&self, ctx: &Context, commands: &Commands) {
         self.input_image
             .transition_layout_ready_to_write(ctx, commands.buffer);
     }
