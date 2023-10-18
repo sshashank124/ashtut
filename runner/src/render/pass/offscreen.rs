@@ -17,9 +17,10 @@ use crate::gpu::{
 };
 
 pub mod conf {
+    const HEIGHT: u32 = 768;
     pub const FRAME_RESOLUTION: ash::vk::Extent2D = ash::vk::Extent2D {
-        width: 1024,
-        height: 768,
+        height: HEIGHT,
+        width: (HEIGHT as f32 * super::super::super::conf::ASPECT_RATIO) as _,
     };
     pub const IMAGE_FORMAT: ash::vk::Format = crate::gpu::image::format::HDR;
 

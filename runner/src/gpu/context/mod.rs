@@ -1,4 +1,5 @@
 mod device;
+mod extensions;
 mod features;
 mod instance;
 mod physical_device;
@@ -30,7 +31,7 @@ impl Context {
         let (physical_device, queue_families, surface_config) =
             instance.get_physical_device_and_info(&surface_handle);
 
-        let device = Device::new(&instance, &physical_device, &queue_families);
+        let device = Device::create(&instance, &physical_device, &queue_families);
 
         let surface = Surface::new(surface_handle, surface_config);
 

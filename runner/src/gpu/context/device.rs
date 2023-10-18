@@ -8,6 +8,7 @@ use ash::vk;
 
 use super::{
     super::alloc,
+    extensions,
     features::Features,
     instance::Instance,
     physical_device::PhysicalDevice,
@@ -15,32 +16,25 @@ use super::{
     Destroy,
 };
 
-pub mod conf {
-    pub const REQUIRED_EXTENSIONS: &[*const std::ffi::c_char] = &[
-        // Core
-        ash::extensions::khr::Swapchain::name().as_ptr(),
-        // Acceleration Structure
-        ash::extensions::khr::AccelerationStructure::name().as_ptr(),
-        ash::extensions::khr::DeferredHostOperations::name().as_ptr(),
-        // Ray Tracing
-        ash::extensions::khr::RayTracingPipeline::name().as_ptr(),
-    ];
-}
-
 pub struct Device {
     device: ash::Device,
+    pub handles: extensions::Handles,
     pub queues: Queues,
     pub allocator: ManuallyDrop<alloc::Allocator>,
 }
 
 impl Device {
-    pub fn new(instance: &Instance, physical_device: &PhysicalDevice, families: &Families) -> Self {
+    pub fn create(
+        instance: &Instance,
+        physical_device: &PhysicalDevice,
+        families: &Families,
+    ) -> Self {
         let mut required_features = Features::required();
 
         let queue_create_infos = Queues::create_infos(families);
 
         let create_info = vk::DeviceCreateInfo::builder()
-            .enabled_extension_names(conf::REQUIRED_EXTENSIONS)
+            .enabled_extension_names(extensions::REQUIRED_FOR_DEVICE)
             .push_next(required_features.v_1_0.as_mut())
             .queue_create_infos(&queue_create_infos);
 
@@ -49,6 +43,8 @@ impl Device {
                 .create_device(**physical_device, &create_info, None)
                 .expect("Failed to create logical device")
         };
+
+        let handles = extensions::Handles::create(instance, &device);
 
         let queues = Queues::create(&device, families);
 
@@ -66,6 +62,7 @@ impl Device {
 
         Self {
             device,
+            handles,
             queues,
             allocator: ManuallyDrop::new(allocator),
         }

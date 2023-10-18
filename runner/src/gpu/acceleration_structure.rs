@@ -1,6 +1,6 @@
-use std::{ops::Deref, rc::Rc};
+use std::ops::Deref;
 
-use ash::{extensions::khr, vk};
+use ash::vk;
 use shared::{bytemuck, Vertex};
 
 use crate::gpu::{model::Model, query_pool::QueryPool, scope::FlushableScope};
@@ -13,7 +13,6 @@ pub struct AccelerationStructures {
 }
 
 pub struct AccelerationStructure {
-    handle: Rc<khr::AccelerationStructure>,
     accel: vk::AccelerationStructureKHR,
     buffer: Buffer,
 }
@@ -47,10 +46,9 @@ impl AccelerationStructures {
         assert!(!models.is_empty(), "Please provide at least 1 model");
 
         let mut scope = FlushableScope::begin_on(ctx, ctx.queues.compute());
-        let handle = Rc::new(khr::AccelerationStructure::new(&ctx.instance, &ctx.device));
 
-        let blases = Self::build_blases(ctx, &mut scope, &handle, models);
-        let tlas = Self::build_tlas(ctx, &mut scope, &handle, &blases);
+        let blases = Self::build_blases(ctx, &mut scope, models);
+        let tlas = Self::build_tlas(ctx, &mut scope, &blases);
 
         scope.finish(ctx);
 
@@ -60,25 +58,23 @@ impl AccelerationStructures {
     fn build_tlas(
         ctx: &mut Context,
         scope: &mut FlushableScope,
-        handle: &Rc<khr::AccelerationStructure>,
         blases: &[AccelerationStructure],
     ) -> AccelerationStructure {
         let instances_info = InstancesInfo::for_instances(ctx, blases);
         let geometry_info = GeometryInfo::for_instances(ctx, &instances_info);
-        let mut build_info = BuildInfo::for_geometry(handle, false, &geometry_info);
+        let mut build_info = BuildInfo::for_geometry(ctx, false, &geometry_info);
         scope.add_resource(instances_info);
 
-        AccelerationStructure::build(ctx, scope, handle, &mut build_info, None)
+        AccelerationStructure::build(ctx, scope, &mut build_info, None)
     }
 
     pub fn build_blases(
         ctx: &mut Context,
         scope: &mut FlushableScope,
-        handle: &Rc<khr::AccelerationStructure>,
         models: &[Model],
     ) -> Vec<AccelerationStructure> {
         let geometry_infos = GeometryInfo::for_models(ctx, models);
-        let mut build_infos = BuildInfo::for_geometries(handle, true, &geometry_infos);
+        let mut build_infos = BuildInfo::for_geometries(ctx, true, &geometry_infos);
 
         let max_scratch_size = build_infos
             .iter()
@@ -95,8 +91,7 @@ impl AccelerationStructures {
         let mut uncompacted = Vec::with_capacity(build_infos.len());
 
         for (idx, build_info) in build_infos.iter_mut().enumerate() {
-            let blas =
-                AccelerationStructure::build(ctx, scope, handle, build_info, Some(scratch_address));
+            let blas = AccelerationStructure::build(ctx, scope, build_info, Some(scratch_address));
             uncompacted.push(blas);
 
             unsafe {
@@ -113,13 +108,15 @@ impl AccelerationStructures {
                     &[],
                 );
 
-                handle.cmd_write_acceleration_structures_properties(
-                    scope.commands.buffer,
-                    &[build_info.geometry.dst_acceleration_structure],
-                    query_type,
-                    *query_pool,
-                    idx as _,
-                );
+                ctx.handles
+                    .accel
+                    .cmd_write_acceleration_structures_properties(
+                        scope.commands.buffer,
+                        &[build_info.geometry.dst_acceleration_structure],
+                        query_type,
+                        *query_pool,
+                        idx as _,
+                    );
             }
         }
 
@@ -131,7 +128,7 @@ impl AccelerationStructures {
 
         for (idx, build_info) in build_infos.iter_mut().enumerate() {
             build_info.sizes.acceleration_structure_size = compact_sizes[idx];
-            compacted.push(AccelerationStructure::init(ctx, handle.clone(), build_info));
+            compacted.push(AccelerationStructure::init(ctx, build_info));
 
             unsafe {
                 let copy_info = vk::CopyAccelerationStructureInfoKHR::builder()
@@ -139,7 +136,9 @@ impl AccelerationStructures {
                     .src(uncompacted[idx].accel)
                     .dst(compacted[idx].accel);
 
-                handle.cmd_copy_acceleration_structure(scope.commands.buffer, &copy_info);
+                ctx.handles
+                    .accel
+                    .cmd_copy_acceleration_structure(scope.commands.buffer, &copy_info);
             }
         }
 
@@ -151,11 +150,7 @@ impl AccelerationStructures {
 }
 
 impl AccelerationStructure {
-    fn init(
-        ctx: &mut Context,
-        handle: Rc<khr::AccelerationStructure>,
-        build_info: &BuildInfo,
-    ) -> Self {
+    fn init(ctx: &mut Context, build_info: &BuildInfo) -> Self {
         let buffer = Buffer::create(
             ctx,
             "Acceleration Structure - Buffer",
@@ -174,22 +169,18 @@ impl AccelerationStructure {
             .buffer(*buffer);
 
         let accel = unsafe {
-            handle
+            ctx.handles
+                .accel
                 .create_acceleration_structure(&create_info, None)
                 .expect("Failed to create acceleration structure")
         };
 
-        Self {
-            handle,
-            accel,
-            buffer,
-        }
+        Self { accel, buffer }
     }
 
     fn build(
         ctx: &mut Context,
         scope: &mut FlushableScope,
-        handle: &Rc<khr::AccelerationStructure>,
         build_info: &mut BuildInfo,
         scratch_address: Option<vk::DeviceAddress>,
     ) -> Self {
@@ -197,11 +188,11 @@ impl AccelerationStructure {
             Self::create_scratch(ctx, scope, build_info.sizes.build_scratch_size)
         });
 
-        let accel = Self::init(ctx, handle.clone(), build_info);
+        let accel = Self::init(ctx, build_info);
         build_info.geometry.dst_acceleration_structure = accel.accel;
 
         unsafe {
-            handle.cmd_build_acceleration_structures(
+            ctx.handles.accel.cmd_build_acceleration_structures(
                 scope.commands.buffer,
                 &[build_info.geometry],
                 &[&build_info.ranges],
@@ -234,11 +225,7 @@ impl AccelerationStructure {
 }
 
 impl<'a> BuildInfo<'a> {
-    fn for_geometry(
-        handle: &khr::AccelerationStructure,
-        bottom_level: bool,
-        geometry_info: &'a GeometryInfo,
-    ) -> Self {
+    fn for_geometry(ctx: &Context, bottom_level: bool, geometry_info: &'a GeometryInfo) -> Self {
         let ranges = geometry_info.ranges.clone();
 
         let ty = if bottom_level {
@@ -266,7 +253,7 @@ impl<'a> BuildInfo<'a> {
             .collect::<Vec<_>>();
 
         let sizes = unsafe {
-            handle.get_acceleration_structure_build_sizes(
+            ctx.handles.accel.get_acceleration_structure_build_sizes(
                 vk::AccelerationStructureBuildTypeKHR::DEVICE,
                 &geometry,
                 &primitive_counts,
@@ -282,13 +269,13 @@ impl<'a> BuildInfo<'a> {
     }
 
     fn for_geometries(
-        handle: &khr::AccelerationStructure,
+        ctx: &Context,
         bottom_level: bool,
         geometry_infos: &'a [GeometryInfo],
     ) -> Vec<Self> {
         geometry_infos
             .iter()
-            .map(|geometry_info| Self::for_geometry(handle, bottom_level, geometry_info))
+            .map(|geometry_info| Self::for_geometry(ctx, bottom_level, geometry_info))
             .collect()
     }
 }
@@ -412,7 +399,9 @@ impl Destroy<Context> for AccelerationStructures {
 
 impl Destroy<Context> for AccelerationStructure {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        self.handle.destroy_acceleration_structure(self.accel, None);
+        ctx.handles
+            .accel
+            .destroy_acceleration_structure(self.accel, None);
         self.buffer.destroy_with(ctx);
     }
 }

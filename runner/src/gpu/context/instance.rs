@@ -7,17 +7,12 @@ use std::{
 use ash::vk;
 use winit::window::Window;
 
-use super::{physical_device::PhysicalDevice, queue, surface, validator::Validator, Destroy};
+use super::{
+    extensions, physical_device::PhysicalDevice, queue, surface, validator::Validator, Destroy,
+};
 
 mod conf {
     pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 0);
-    pub const ENABLED_EXTENSIONS: &[*const std::ffi::c_char] = &[
-        // Debug
-        ash::extensions::ext::DebugUtils::name().as_ptr(),
-        // Surface
-        ash::extensions::khr::Surface::name().as_ptr(),
-        super::super::surface::conf::PLATFORM_EXTENSION,
-    ];
 }
 
 pub struct Instance {
@@ -38,7 +33,7 @@ impl Instance {
 
         let instance_create_info = vk::InstanceCreateInfo::builder()
             .application_info(&app_info)
-            .enabled_extension_names(conf::ENABLED_EXTENSIONS);
+            .enabled_extension_names(extensions::REQUIRED_FOR_INSTANCE);
 
         let mut debug_info = Validator::debug_messenger_create_info();
         let instance_create_info =
@@ -116,7 +111,7 @@ impl Instance {
                 .collect()
         };
 
-        super::device::conf::REQUIRED_EXTENSIONS
+        extensions::REQUIRED_FOR_DEVICE
             .iter()
             .copied()
             .map(crate::util::bytes_to_string)

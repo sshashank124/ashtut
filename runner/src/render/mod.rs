@@ -13,6 +13,10 @@ use self::{
     sync_state::SyncState,
 };
 
+pub mod conf {
+    pub const ASPECT_RATIO: f32 = 4.0 / 3.0;
+}
+
 pub struct Renderer {
     // offscreen pass
     offscreen_pipeline: offscreen::Pipeline,
@@ -89,7 +93,7 @@ impl Renderer {
 
         let (image_index, needs_recreating) = self
             .swapchain
-            .get_next_image(self.state.image_available_semaphore()[0]);
+            .get_next_image(ctx, self.state.image_available_semaphore()[0]);
         let image_index = image_index as usize;
 
         let needs_recreating = needs_recreating || {

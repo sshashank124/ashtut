@@ -1,4 +1,4 @@
-use ash::{extensions::khr, vk};
+use ash::vk;
 
 use crate::gpu::{
     context::Context,
@@ -9,7 +9,6 @@ use crate::gpu::{
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
-    pub handle: khr::Swapchain,
     pub render_target: Framebuffers<{ format::SWAPCHAIN }>,
 }
 
@@ -29,16 +28,16 @@ impl Swapchain {
             .present_mode(ctx.surface.config.present_mode)
             .clipped(true);
 
-        let loader = khr::Swapchain::new(&ctx.instance, ctx);
-
         let swapchain = unsafe {
-            loader
+            ctx.handles
+                .swapchain
                 .create_swapchain(&create_info, None)
                 .expect("Failed to create swapchain")
         };
 
         let images = unsafe {
-            loader
+            ctx.handles
+                .swapchain
                 .get_swapchain_images(swapchain)
                 .expect("Failed to get swapchain images")
         }
@@ -56,14 +55,14 @@ impl Swapchain {
 
         Self {
             swapchain,
-            handle: loader,
             render_target,
         }
     }
 
-    pub fn get_next_image(&self, signal_to: vk::Semaphore) -> (u32, bool) {
+    pub fn get_next_image(&self, ctx: &Context, signal_to: vk::Semaphore) -> (u32, bool) {
         unsafe {
-            self.handle
+            ctx.handles
+                .swapchain
                 .acquire_next_image(self.swapchain, u64::MAX, signal_to, vk::Fence::null())
                 .unwrap_or((0, true))
         }
@@ -85,7 +84,8 @@ impl Swapchain {
             .image_indices(&image_indices);
 
         unsafe {
-            self.handle
+            ctx.handles
+                .swapchain
                 .queue_present(**ctx.queues.graphics(), &present_info)
                 .unwrap_or(true)
         }
@@ -95,6 +95,8 @@ impl Swapchain {
 impl Destroy<Context> for Swapchain {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.render_target.destroy_with(ctx);
-        self.handle.destroy_swapchain(self.swapchain, None);
+        ctx.handles
+            .swapchain
+            .destroy_swapchain(self.swapchain, None);
     }
 }

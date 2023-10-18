@@ -11,9 +11,6 @@ use super::{instance::Instance, physical_device::PhysicalDevice, Destroy};
 pub mod conf {
     use ash::vk;
 
-    pub const PLATFORM_EXTENSION: *const std::ffi::c_char =
-        ash::extensions::khr::Win32Surface::name().as_ptr();
-
     pub const PREFERRED_SURFACE_FORMAT: vk::SurfaceFormatKHR = vk::SurfaceFormatKHR {
         format: vk::Format::B8G8R8A8_SRGB,
         color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
