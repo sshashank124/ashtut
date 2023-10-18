@@ -23,13 +23,19 @@ pub const REQUIRED_FOR_DEVICE: &[*const std::ffi::c_char] = &[
 pub struct Handles {
     pub swapchain: khr::Swapchain,
     pub accel: khr::AccelerationStructure,
+    pub ray_tracing: khr::RayTracingPipeline,
 }
 
 impl Handles {
     pub fn create(instance: &Instance, device: &ash::Device) -> Self {
         let swapchain = khr::Swapchain::new(instance, device);
         let accel = khr::AccelerationStructure::new(instance, device);
+        let ray_tracing = khr::RayTracingPipeline::new(instance, device);
 
-        Self { swapchain, accel }
+        Self {
+            swapchain,
+            accel,
+            ray_tracing,
+        }
     }
 }

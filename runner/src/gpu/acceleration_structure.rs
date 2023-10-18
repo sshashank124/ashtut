@@ -108,15 +108,13 @@ impl AccelerationStructures {
                     &[],
                 );
 
-                ctx.handles
-                    .accel
-                    .cmd_write_acceleration_structures_properties(
-                        scope.commands.buffer,
-                        &[build_info.geometry.dst_acceleration_structure],
-                        query_type,
-                        *query_pool,
-                        idx as _,
-                    );
+                ctx.ext.accel.cmd_write_acceleration_structures_properties(
+                    scope.commands.buffer,
+                    &[build_info.geometry.dst_acceleration_structure],
+                    query_type,
+                    *query_pool,
+                    idx as _,
+                );
             }
         }
 
@@ -136,7 +134,7 @@ impl AccelerationStructures {
                     .src(uncompacted[idx].accel)
                     .dst(compacted[idx].accel);
 
-                ctx.handles
+                ctx.ext
                     .accel
                     .cmd_copy_acceleration_structure(scope.commands.buffer, &copy_info);
             }
@@ -169,7 +167,7 @@ impl AccelerationStructure {
             .buffer(*buffer);
 
         let accel = unsafe {
-            ctx.handles
+            ctx.ext
                 .accel
                 .create_acceleration_structure(&create_info, None)
                 .expect("Failed to create acceleration structure")
@@ -192,7 +190,7 @@ impl AccelerationStructure {
         build_info.geometry.dst_acceleration_structure = accel.accel;
 
         unsafe {
-            ctx.handles.accel.cmd_build_acceleration_structures(
+            ctx.ext.accel.cmd_build_acceleration_structures(
                 scope.commands.buffer,
                 &[build_info.geometry],
                 &[&build_info.ranges],
@@ -253,7 +251,7 @@ impl<'a> BuildInfo<'a> {
             .collect::<Vec<_>>();
 
         let sizes = unsafe {
-            ctx.handles.accel.get_acceleration_structure_build_sizes(
+            ctx.ext.accel.get_acceleration_structure_build_sizes(
                 vk::AccelerationStructureBuildTypeKHR::DEVICE,
                 &geometry,
                 &primitive_counts,
@@ -399,7 +397,7 @@ impl Destroy<Context> for AccelerationStructures {
 
 impl Destroy<Context> for AccelerationStructure {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        ctx.handles
+        ctx.ext
             .accel
             .destroy_acceleration_structure(self.accel, None);
         self.buffer.destroy_with(ctx);

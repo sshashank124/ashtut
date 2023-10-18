@@ -4,8 +4,11 @@ mod sync_state;
 use shared::UniformObjects;
 
 use crate::gpu::{
-    context::Context, framebuffers::Framebuffers, image::Image, swapchain::Swapchain,
-    sync_info::SyncInfo, Destroy,
+    context::Context,
+    image::{format, Image},
+    swapchain::Swapchain,
+    sync_info::SyncInfo,
+    Destroy,
 };
 
 use self::{
@@ -20,7 +23,6 @@ pub mod conf {
 pub struct Renderer {
     // offscreen pass
     offscreen_pipeline: offscreen::Pipeline,
-    intermediate_target: Framebuffers<{ offscreen::conf::IMAGE_FORMAT }>,
 
     // tonemap pass
     tonemap_pipeline: tonemap::Pipeline,
@@ -40,25 +42,17 @@ impl Renderer {
             let data = pathtracer::Data::create(ctx);
             pathtracer::Pipeline::create(ctx, data)
         };
-        unsafe { pathtracer_pipeline.destroy_with(ctx) };
 
         let offscreen_pipeline = {
             let data = offscreen::Data::create(ctx);
             offscreen::Pipeline::create(ctx, data)
         };
 
-        let intermediate_target = Framebuffers::create_new(
-            ctx,
-            "Intermediate render target",
-            offscreen_pipeline.render_pass,
-            offscreen::conf::FRAME_RESOLUTION,
-        );
-
         let tonemap_pipeline = {
             let input_image = Image::new(
                 ctx,
-                intermediate_target.colors[0].image,
-                offscreen::conf::IMAGE_FORMAT,
+                offscreen_pipeline.target.colors[0].image,
+                format::HDR,
                 None,
             );
             let data = tonemap::Data::create(ctx, input_image);
@@ -69,9 +63,10 @@ impl Renderer {
 
         let state = SyncState::create(ctx);
 
+        unsafe { pathtracer_pipeline.destroy_with(ctx) };
+
         Self {
             offscreen_pipeline,
-            intermediate_target,
 
             tonemap_pipeline,
             swapchain,
@@ -88,8 +83,7 @@ impl Renderer {
 
         self.offscreen_pipeline.uniforms.update(uniforms);
 
-        self.offscreen_pipeline
-            .run(ctx, 0, &SyncInfo::default(), &self.intermediate_target);
+        self.offscreen_pipeline.run(ctx, &SyncInfo::default());
 
         let (image_index, needs_recreating) = self
             .swapchain
@@ -139,7 +133,6 @@ impl Destroy<Context> for Renderer {
         self.swapchain.destroy_with(ctx);
         self.tonemap_pipeline.destroy_with(ctx);
 
-        self.intermediate_target.destroy_with(ctx);
         self.offscreen_pipeline.destroy_with(ctx);
     }
 }

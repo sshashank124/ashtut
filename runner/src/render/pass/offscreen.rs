@@ -22,12 +22,11 @@ pub mod conf {
         height: HEIGHT,
         width: (HEIGHT as f32 * super::super::super::conf::ASPECT_RATIO) as _,
     };
-    pub const IMAGE_FORMAT: ash::vk::Format = crate::gpu::image::format::HDR;
 
     pub const SHADER_FILE: &str = env!("raster.spv");
-    pub const VERTEX_SHADER_ENTRY_POINT: &std::ffi::CStr =
+    pub const STAGE_VERTEX: &std::ffi::CStr =
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"vert_main\0") };
-    pub const FRAGMENT_SHADER_ENTRY_POINT: &std::ffi::CStr =
+    pub const STAGE_FRAGMENT: &std::ffi::CStr =
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"frag_main\0") };
 }
 
@@ -39,6 +38,7 @@ pub struct Data {
 pub struct Pipeline {
     data: Data,
     pub render_pass: vk::RenderPass,
+    pub target: Framebuffers<{ format::HDR }>,
     pipeline: pipeline::Pipeline,
 }
 
@@ -88,17 +88,21 @@ impl Data {
 impl Pipeline {
     pub fn create(ctx: &mut Context, data: Data) -> Self {
         let render_pass = Self::create_render_pass(ctx);
-        let descriptors = Self::create_descriptors(ctx);
-        let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, descriptors.layout);
 
+        let target =
+            Framebuffers::create(ctx, "Render target", render_pass, conf::FRAME_RESOLUTION);
+
+        let descriptors = Self::create_descriptors(ctx);
         data.bind_to_descriptors(ctx, &descriptors);
 
+        let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, descriptors.layout);
         let pipeline =
             pipeline::Pipeline::new(ctx, descriptors, layout, pipeline, ctx.queues.graphics(), 1);
 
         Self {
             data,
             render_pass,
+            target,
             pipeline,
         }
     }
@@ -106,7 +110,7 @@ impl Pipeline {
     fn create_render_pass(ctx: &Context) -> vk::RenderPass {
         let attachments = [
             vk::AttachmentDescription::builder()
-                .format(conf::IMAGE_FORMAT)
+                .format(format::HDR)
                 .samples(vk::SampleCountFlags::TYPE_1)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
@@ -229,12 +233,12 @@ impl Pipeline {
             vk::PipelineShaderStageCreateInfo::builder()
                 .stage(vk::ShaderStageFlags::VERTEX)
                 .module(shader_module)
-                .name(conf::VERTEX_SHADER_ENTRY_POINT)
+                .name(conf::STAGE_VERTEX)
                 .build(),
             vk::PipelineShaderStageCreateInfo::builder()
                 .stage(vk::ShaderStageFlags::FRAGMENT)
                 .module(shader_module)
-                .name(conf::FRAGMENT_SHADER_ENTRY_POINT)
+                .name(conf::STAGE_FRAGMENT)
                 .build(),
         ];
 
@@ -320,19 +324,13 @@ impl Pipeline {
         (layout, pipeline)
     }
 
-    pub fn run(
-        &self,
-        ctx: &Context,
-        idx: usize,
-        sync_info: &SyncInfo,
-        output_to: &Framebuffers<{ conf::IMAGE_FORMAT }>,
-    ) {
-        let commands = self.pipeline.begin_pipeline(ctx, idx);
+    pub fn run(&self, ctx: &Context, sync_info: &SyncInfo) {
+        let commands = self.pipeline.begin_pipeline(ctx, 0);
 
         let render_pass_info = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass)
             .render_area(conf::FRAME_RESOLUTION.into())
-            .framebuffer(output_to.framebuffers[idx])
+            .framebuffer(self.target.framebuffers[0])
             .clear_values(framebuffers::CLEAR_VALUES)
             .build();
 
@@ -354,7 +352,7 @@ impl Pipeline {
                 vk::PipelineBindPoint::GRAPHICS,
                 self.pipeline.layout,
                 0,
-                self.pipeline.descriptor_set(idx),
+                self.pipeline.descriptor_set(0),
                 &[],
             );
 
@@ -380,12 +378,13 @@ impl Pipeline {
             ctx.cmd_end_render_pass(commands.buffer);
         }
 
-        self.pipeline.submit_pipeline(ctx, idx, sync_info);
+        self.pipeline.submit_pipeline(ctx, 0, sync_info);
     }
 }
 
 impl Destroy<Context> for Pipeline {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+        self.target.destroy_with(ctx);
         self.pipeline.destroy_with(ctx);
         ctx.destroy_render_pass(self.render_pass, None);
         self.data.destroy_with(ctx);

@@ -29,14 +29,14 @@ impl Swapchain {
             .clipped(true);
 
         let swapchain = unsafe {
-            ctx.handles
+            ctx.ext
                 .swapchain
                 .create_swapchain(&create_info, None)
                 .expect("Failed to create swapchain")
         };
 
         let images = unsafe {
-            ctx.handles
+            ctx.ext
                 .swapchain
                 .get_swapchain_images(swapchain)
                 .expect("Failed to get swapchain images")
@@ -61,7 +61,7 @@ impl Swapchain {
 
     pub fn get_next_image(&self, ctx: &Context, signal_to: vk::Semaphore) -> (u32, bool) {
         unsafe {
-            ctx.handles
+            ctx.ext
                 .swapchain
                 .acquire_next_image(self.swapchain, u64::MAX, signal_to, vk::Fence::null())
                 .unwrap_or((0, true))
@@ -84,7 +84,7 @@ impl Swapchain {
             .image_indices(&image_indices);
 
         unsafe {
-            ctx.handles
+            ctx.ext
                 .swapchain
                 .queue_present(**ctx.queues.graphics(), &present_info)
                 .unwrap_or(true)
@@ -95,8 +95,6 @@ impl Swapchain {
 impl Destroy<Context> for Swapchain {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.render_target.destroy_with(ctx);
-        ctx.handles
-            .swapchain
-            .destroy_swapchain(self.swapchain, None);
+        ctx.ext.swapchain.destroy_swapchain(self.swapchain, None);
     }
 }

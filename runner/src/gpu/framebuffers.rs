@@ -64,7 +64,7 @@ impl<const FORMAT: vk::Format> Framebuffers<{ FORMAT }> {
         }
     }
 
-    pub fn create_new(
+    pub fn create(
         ctx: &mut Context,
         name: &str,
         render_pass: vk::RenderPass,

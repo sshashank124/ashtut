@@ -18,7 +18,7 @@ use super::{
 
 pub struct Device {
     device: ash::Device,
-    pub handles: extensions::Handles,
+    pub ext: extensions::Handles,
     pub queues: Queues,
     pub allocator: ManuallyDrop<alloc::Allocator>,
 }
@@ -44,7 +44,7 @@ impl Device {
                 .expect("Failed to create logical device")
         };
 
-        let handles = extensions::Handles::create(instance, &device);
+        let ext = extensions::Handles::create(instance, &device);
 
         let queues = Queues::create(&device, families);
 
@@ -62,7 +62,7 @@ impl Device {
 
         Self {
             device,
-            handles,
+            ext,
             queues,
             allocator: ManuallyDrop::new(allocator),
         }

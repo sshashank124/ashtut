@@ -18,6 +18,7 @@ impl Features {
         features.v_1_2.vulkan_memory_model = 1;
         features.v_1_2.buffer_device_address = 1;
         features.acceleration_structure.acceleration_structure = 1;
+        features.ray_tracing_pipeline.ray_tracing_pipeline = 1;
         features
     }
 
@@ -26,6 +27,7 @@ impl Features {
             && self.v_1_0.features.sampler_anisotropy > 0
             && self.v_1_2.buffer_device_address > 0
             && self.acceleration_structure.acceleration_structure > 0
+            && self.ray_tracing_pipeline.ray_tracing_pipeline > 0
     }
 
     pub fn get_supported(instance: &Instance, physical_device: vk::PhysicalDevice) -> Self {

@@ -15,14 +15,14 @@ use crate::gpu::{
 
 mod conf {
     pub const SHADER_FILE: &str = env!("tonemap.spv");
-    pub const VERTEX_SHADER_ENTRY_POINT: &std::ffi::CStr =
+    pub const STAGE_VERTEX: &std::ffi::CStr =
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"vert_main\0") };
-    pub const FRAGMENT_SHADER_ENTRY_POINT: &std::ffi::CStr =
+    pub const STAGE_FRAGMENT: &std::ffi::CStr =
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"frag_main\0") };
 }
 
 pub struct Data {
-    input_image: Image<{ super::offscreen::conf::IMAGE_FORMAT }>,
+    input_image: Image<{ format::HDR }>,
     sampler: Sampler,
 }
 
@@ -33,10 +33,7 @@ pub struct Pipeline {
 }
 
 impl Data {
-    pub fn create(
-        ctx: &Context,
-        input_image: Image<{ super::offscreen::conf::IMAGE_FORMAT }>,
-    ) -> Self {
+    pub fn create(ctx: &Context, input_image: Image<{ format::HDR }>) -> Self {
         Self {
             input_image,
             sampler: Sampler::create(ctx),
@@ -68,11 +65,11 @@ impl Data {
 impl Pipeline {
     pub fn create(ctx: &mut Context, data: Data) -> Self {
         let render_pass = Self::create_render_pass(ctx);
-        let descriptors = Self::create_descriptors(ctx);
-        let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, descriptors.layout);
 
+        let descriptors = Self::create_descriptors(ctx);
         data.bind_to_descriptors(ctx, &descriptors);
 
+        let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, descriptors.layout);
         let pipeline = pipeline::Pipeline::new(
             ctx,
             descriptors,
@@ -202,12 +199,12 @@ impl Pipeline {
             vk::PipelineShaderStageCreateInfo::builder()
                 .stage(vk::ShaderStageFlags::VERTEX)
                 .module(shader_module)
-                .name(conf::VERTEX_SHADER_ENTRY_POINT)
+                .name(conf::STAGE_VERTEX)
                 .build(),
             vk::PipelineShaderStageCreateInfo::builder()
                 .stage(vk::ShaderStageFlags::FRAGMENT)
                 .module(shader_module)
-                .name(conf::FRAGMENT_SHADER_ENTRY_POINT)
+                .name(conf::STAGE_FRAGMENT)
                 .build(),
         ];
 

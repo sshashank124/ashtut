@@ -18,7 +18,7 @@ mod conf {
 pub struct Instance {
     pub entry: ash::Entry,
     instance: ash::Instance,
-    validator: Validator,
+    _validator: Validator,
 }
 
 impl Instance {
@@ -35,9 +35,7 @@ impl Instance {
             .application_info(&app_info)
             .enabled_extension_names(extensions::REQUIRED_FOR_INSTANCE);
 
-        let mut debug_info = Validator::debug_messenger_create_info();
-        let instance_create_info =
-            Validator::add_validation_to_instance(instance_create_info, &mut debug_info);
+        let instance_create_info = Validator::add_validation_to_instance(instance_create_info);
 
         let instance = unsafe {
             entry
@@ -45,12 +43,12 @@ impl Instance {
                 .expect("Failed to create Vulkan instance")
         };
 
-        let validator = Validator::setup(&entry, &instance, debug_info);
+        let validator = Validator::setup(&entry, &instance);
 
         Self {
             entry,
             instance,
-            validator,
+            _validator: validator,
         }
     }
 
@@ -120,8 +118,7 @@ impl Instance {
 }
 
 impl Destroy<()> for Instance {
-    unsafe fn destroy_with(&mut self, ctx: &mut ()) {
-        self.validator.destroy_with(ctx);
+    unsafe fn destroy_with(&mut self, _: &mut ()) {
         self.instance.destroy_instance(None);
     }
 }
