@@ -8,6 +8,7 @@ pub mod format {
     pub const HDR: ash::vk::Format = ash::vk::Format::R32G32B32A32_SFLOAT;
     pub const COLOR: ash::vk::Format = ash::vk::Format::R8G8B8A8_SRGB;
     pub const DEPTH: ash::vk::Format = ash::vk::Format::D32_SFLOAT;
+    pub const SWAPCHAIN: ash::vk::Format = ash::vk::Format::UNDEFINED;
 }
 
 pub struct Image<const FORMAT: vk::Format> {

@@ -4,28 +4,22 @@ mod sync_state;
 use shared::UniformObjects;
 
 use crate::gpu::{
-    context::Context, framebuffers::Framebuffers, image::Image, pipeline::Pipeline,
-    swapchain::Swapchain, sync_info::SyncInfo, Destroy,
+    context::Context, framebuffers::Framebuffers, image::Image, swapchain::Swapchain,
+    sync_info::SyncInfo, Destroy,
 };
 
 use self::{
-    pass::{
-        offscreen::Offscreen, tonemap::Tonemap, OffscreenPipeline, PathTracer, TonemapPipeline,
-    },
+    pass::{offscreen, pathtracer, tonemap},
     sync_state::SyncState,
 };
 
-pub mod conf {
-    pub const OUTPUT_IMAGE_FORMAT: ash::vk::Format = crate::gpu::image::format::HDR;
-}
-
 pub struct Renderer {
     // offscreen pass
-    offscreen_pass: OffscreenPipeline,
-    intermediate_target: Framebuffers<{ conf::OUTPUT_IMAGE_FORMAT }>,
+    offscreen_pipeline: offscreen::Pipeline,
+    intermediate_target: Framebuffers<{ offscreen::conf::IMAGE_FORMAT }>,
 
     // tonemap pass
-    tonemap_pass: TonemapPipeline,
+    tonemap_pipeline: tonemap::Pipeline,
     swapchain: Swapchain,
 
     // state
@@ -38,44 +32,44 @@ pub enum Error {
 
 impl Renderer {
     pub fn create(ctx: &mut Context) -> Self {
-        let mut raytrace_pass = {
-            let contents = PathTracer::create(ctx);
-            Pipeline::create(ctx, contents)
+        let mut pathtracer_pipeline = {
+            let data = pathtracer::Data::create(ctx);
+            pathtracer::Pipeline::create(ctx, data)
         };
-        unsafe { raytrace_pass.destroy_with(ctx) };
+        unsafe { pathtracer_pipeline.destroy_with(ctx) };
 
-        let offscreen_pass = {
-            let contents = Offscreen::create(ctx);
-            Pipeline::create(ctx, contents)
+        let offscreen_pipeline = {
+            let data = offscreen::Data::create(ctx);
+            offscreen::Pipeline::create(ctx, data)
         };
 
         let intermediate_target = Framebuffers::create_new(
             ctx,
             "Intermediate render target",
-            offscreen_pass.spec.render_pass,
-            pass::offscreen::conf::FRAME_RESOLUTION,
+            offscreen_pipeline.render_pass,
+            offscreen::conf::FRAME_RESOLUTION,
         );
 
-        let tonemap_pass = {
+        let tonemap_pipeline = {
             let input_image = Image::new(
                 ctx,
                 intermediate_target.colors[0].image,
-                conf::OUTPUT_IMAGE_FORMAT,
+                offscreen::conf::IMAGE_FORMAT,
                 None,
             );
-            let contents = Tonemap::create_for(ctx, input_image);
-            Pipeline::create(ctx, contents)
+            let data = tonemap::Data::create(ctx, input_image);
+            tonemap::Pipeline::create(ctx, data)
         };
 
-        let swapchain = Swapchain::create(ctx, tonemap_pass.spec.render_pass);
+        let swapchain = Swapchain::create(ctx, tonemap_pipeline.render_pass);
 
         let state = SyncState::create(ctx);
 
         Self {
-            offscreen_pass,
+            offscreen_pipeline,
             intermediate_target,
 
-            tonemap_pass,
+            tonemap_pipeline,
             swapchain,
 
             state,
@@ -88,10 +82,10 @@ impl Renderer {
                 .expect("Failed to wait for fence");
         }
 
-        self.offscreen_pass.contents.uniforms.update(uniforms);
+        self.offscreen_pipeline.uniforms.update(uniforms);
 
-        self.offscreen_pass
-            .run(ctx, 0, &self.intermediate_target, &SyncInfo::default());
+        self.offscreen_pipeline
+            .run(ctx, 0, &SyncInfo::default(), &self.intermediate_target);
 
         let (image_index, needs_recreating) = self
             .swapchain
@@ -104,15 +98,15 @@ impl Renderer {
                     .expect("Failed to reset fence");
             }
 
-            self.tonemap_pass.run(
+            self.tonemap_pipeline.run(
                 ctx,
                 image_index,
-                &self.swapchain.render_target,
                 &SyncInfo {
                     wait_on: self.state.image_available_semaphore(),
                     signal_to: self.state.render_finished_semaphore(),
                     fence: Some(self.state.in_flight_fence()[0]),
                 },
+                &self.swapchain.render_target,
             );
 
             self.swapchain
@@ -130,7 +124,7 @@ impl Renderer {
         unsafe {
             self.swapchain.destroy_with(ctx);
         }
-        self.swapchain = Swapchain::create(ctx, self.tonemap_pass.spec.render_pass);
+        self.swapchain = Swapchain::create(ctx, self.tonemap_pipeline.render_pass);
     }
 }
 
@@ -139,9 +133,9 @@ impl Destroy<Context> for Renderer {
         self.state.destroy_with(ctx);
 
         self.swapchain.destroy_with(ctx);
-        self.tonemap_pass.destroy_with(ctx);
+        self.tonemap_pipeline.destroy_with(ctx);
 
         self.intermediate_target.destroy_with(ctx);
-        self.offscreen_pass.destroy_with(ctx);
+        self.offscreen_pipeline.destroy_with(ctx);
     }
 }

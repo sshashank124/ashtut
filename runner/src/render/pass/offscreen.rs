@@ -1,14 +1,17 @@
+use std::ops::{Deref, DerefMut};
+
 use ash::vk;
 use shared::Vertex;
 
 use crate::gpu::{
-    commands::Commands,
     context::Context,
     descriptors::Descriptors,
+    framebuffers::{self, Framebuffers},
     image::format,
     model::Model,
-    pipeline::{Contents, Graphics, Pipeline},
+    pipeline,
     scope::OneshotScope,
+    sync_info::SyncInfo,
     uniforms::Uniforms,
     Descriptions, Destroy,
 };
@@ -18,6 +21,8 @@ pub mod conf {
         width: 1024,
         height: 768,
     };
+    pub const IMAGE_FORMAT: ash::vk::Format = crate::gpu::image::format::HDR;
+
     pub const SHADER_FILE: &str = env!("raster.spv");
     pub const VERTEX_SHADER_ENTRY_POINT: &std::ffi::CStr =
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"vert_main\0") };
@@ -25,36 +30,134 @@ pub mod conf {
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"frag_main\0") };
 }
 
-type Spec = Graphics<{ super::super::conf::OUTPUT_IMAGE_FORMAT }>;
-pub type OffscreenPipeline = Pipeline<Spec, Offscreen>;
-
-pub struct Offscreen {
+pub struct Data {
     pub uniforms: Uniforms,
     models: Vec<Model>,
 }
 
-impl Offscreen {
+pub struct Pipeline {
+    data: Data,
+    pub render_pass: vk::RenderPass,
+    pipeline: pipeline::Pipeline,
+}
+
+impl Data {
     pub fn create(ctx: &mut Context) -> Self {
         let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.graphics());
-
         let uniforms = Uniforms::create(ctx);
         let models = vec![Model::demo_viking_room(ctx, &mut init_scope)];
-
         init_scope.finish(ctx);
 
         Self { uniforms, models }
     }
+
+    pub fn bind_to_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
+        let buffer_infos = [vk::DescriptorBufferInfo::builder()
+            .buffer(*self.uniforms.buffer)
+            .range(vk::WHOLE_SIZE)
+            .build()];
+
+        let sampled_image_info = [vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(self.models[0].texture.image.view)
+            .sampler(*self.models[0].texture.sampler)
+            .build()];
+
+        let writes = [
+            vk::WriteDescriptorSet::builder()
+                .dst_set(descriptors.sets[0])
+                .dst_binding(0)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .buffer_info(&buffer_infos)
+                .build(),
+            vk::WriteDescriptorSet::builder()
+                .dst_set(descriptors.sets[0])
+                .dst_binding(1)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(&sampled_image_info)
+                .build(),
+        ];
+
+        unsafe {
+            ctx.update_descriptor_sets(&writes, &[]);
+        }
+    }
 }
 
-impl Contents<Spec> for Offscreen {
-    fn num_command_sets(_: &Context) -> u32 {
-        1
+impl Pipeline {
+    pub fn create(ctx: &mut Context, data: Data) -> Self {
+        let render_pass = Self::create_render_pass(ctx);
+        let descriptors = Self::create_descriptors(ctx);
+        let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, descriptors.layout);
+
+        data.bind_to_descriptors(ctx, &descriptors);
+
+        let pipeline =
+            pipeline::Pipeline::new(ctx, descriptors, layout, pipeline, ctx.queues.graphics(), 1);
+
+        Self {
+            data,
+            render_pass,
+            pipeline,
+        }
     }
 
-    fn render_area(_: &Context) -> vk::Rect2D {
-        vk::Rect2D {
-            extent: conf::FRAME_RESOLUTION,
-            ..Default::default()
+    fn create_render_pass(ctx: &Context) -> vk::RenderPass {
+        let attachments = [
+            vk::AttachmentDescription::builder()
+                .format(conf::IMAGE_FORMAT)
+                .samples(vk::SampleCountFlags::TYPE_1)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .initial_layout(vk::ImageLayout::UNDEFINED)
+                .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .build(),
+            vk::AttachmentDescription::builder()
+                .format(format::DEPTH)
+                .samples(vk::SampleCountFlags::TYPE_1)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
+                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
+                .initial_layout(vk::ImageLayout::UNDEFINED)
+                .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+                .build(),
+        ];
+
+        let color_attachment_references = [vk::AttachmentReference::builder()
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .attachment(0)
+            .build()];
+
+        let depth_attachment_reference = vk::AttachmentReference::builder()
+            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            .attachment(1);
+
+        let subpasses = [vk::SubpassDescription::builder()
+            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
+            .color_attachments(&color_attachment_references)
+            .depth_stencil_attachment(&depth_attachment_reference)
+            .build()];
+
+        let dependencies = [vk::SubpassDependency::builder()
+            .src_subpass(vk::SUBPASS_EXTERNAL)
+            .dst_subpass(0)
+            .src_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
+            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+            .src_access_mask(vk::AccessFlags::SHADER_READ)
+            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+            .build()];
+
+        let render_pass_info = vk::RenderPassCreateInfo::builder()
+            .attachments(&attachments)
+            .subpasses(&subpasses)
+            .dependencies(&dependencies);
+
+        unsafe {
+            ctx.create_render_pass(&render_pass_info, None)
+                .expect("Failed to create render pass")
         }
     }
 
@@ -115,65 +218,9 @@ impl Contents<Spec> for Offscreen {
         Descriptors { layout, pool, sets }
     }
 
-    fn create_specialization(ctx: &Context) -> Spec {
-        let attachments = [
-            vk::AttachmentDescription::builder()
-                .format(super::super::conf::OUTPUT_IMAGE_FORMAT)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .initial_layout(vk::ImageLayout::UNDEFINED)
-                .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .build(),
-            vk::AttachmentDescription::builder()
-                .format(format::DEPTH)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .initial_layout(vk::ImageLayout::UNDEFINED)
-                .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-                .build(),
-        ];
-
-        let color_attachment_references = [vk::AttachmentReference::builder()
-            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .attachment(0)
-            .build()];
-
-        let depth_attachment_reference = vk::AttachmentReference::builder()
-            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-            .attachment(1);
-
-        let subpasses = [vk::SubpassDescription::builder()
-            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-            .color_attachments(&color_attachment_references)
-            .depth_stencil_attachment(&depth_attachment_reference)
-            .build()];
-
-        let dependencies = [vk::SubpassDependency::builder()
-            .src_subpass(vk::SUBPASS_EXTERNAL)
-            .dst_subpass(0)
-            .src_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
-            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-            .src_access_mask(vk::AccessFlags::SHADER_READ)
-            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-            .build()];
-
-        let render_pass_info = vk::RenderPassCreateInfo::builder()
-            .attachments(&attachments)
-            .subpasses(&subpasses)
-            .dependencies(&dependencies);
-
-        Graphics::create(ctx, &render_pass_info)
-    }
-
     fn create_pipeline(
         ctx: &Context,
-        spec: &Spec,
+        render_pass: vk::RenderPass,
         descriptor_set_layout: vk::DescriptorSetLayout,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
         let shader_module = ctx.create_shader_module_from_file(conf::SHADER_FILE);
@@ -259,7 +306,7 @@ impl Contents<Spec> for Offscreen {
             .color_blend_state(&color_blend_info)
             .depth_stencil_state(&depth_stencil_info)
             .layout(layout)
-            .render_pass(spec.render_pass)
+            .render_pass(render_pass)
             .build()];
 
         let pipeline = unsafe {
@@ -272,40 +319,44 @@ impl Contents<Spec> for Offscreen {
         (layout, pipeline)
     }
 
-    fn bind_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
-        let buffer_infos = [vk::DescriptorBufferInfo::builder()
-            .buffer(*self.uniforms.buffer)
-            .range(vk::WHOLE_SIZE)
-            .build()];
+    pub fn run(
+        &self,
+        ctx: &Context,
+        idx: usize,
+        sync_info: &SyncInfo,
+        output_to: &Framebuffers<{ conf::IMAGE_FORMAT }>,
+    ) {
+        let commands = self.pipeline.begin_pipeline(ctx, idx);
 
-        let sampled_image_info = [vk::DescriptorImageInfo::builder()
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(self.models[0].texture.image.view)
-            .sampler(*self.models[0].texture.sampler)
-            .build()];
-
-        let writes = [
-            vk::WriteDescriptorSet::builder()
-                .dst_set(descriptors.sets[0])
-                .dst_binding(0)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(&buffer_infos)
-                .build(),
-            vk::WriteDescriptorSet::builder()
-                .dst_set(descriptors.sets[0])
-                .dst_binding(1)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(&sampled_image_info)
-                .build(),
-        ];
+        let render_pass_info = vk::RenderPassBeginInfo::builder()
+            .render_pass(self.render_pass)
+            .render_area(conf::FRAME_RESOLUTION.into())
+            .framebuffer(output_to.framebuffers[idx])
+            .clear_values(framebuffers::CLEAR_VALUES)
+            .build();
 
         unsafe {
-            ctx.update_descriptor_sets(&writes, &[]);
-        }
-    }
+            ctx.cmd_begin_render_pass(
+                commands.buffer,
+                &render_pass_info,
+                vk::SubpassContents::INLINE,
+            );
 
-    fn record_commands(&self, ctx: &Context, commands: &Commands) {
-        unsafe {
+            ctx.cmd_bind_pipeline(
+                commands.buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                *self.pipeline,
+            );
+
+            ctx.cmd_bind_descriptor_sets(
+                commands.buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline.layout,
+                0,
+                self.pipeline.descriptor_set(idx),
+                &[],
+            );
+
             let vertex_buffers = [*self.models[0].vertex_index_buffer];
             ctx.cmd_bind_vertex_buffers(commands.buffer, 0, &vertex_buffers, &[0]);
 
@@ -324,13 +375,38 @@ impl Contents<Spec> for Offscreen {
                 0,
                 0,
             );
+
+            ctx.cmd_end_render_pass(commands.buffer);
         }
+
+        self.pipeline.submit_pipeline(ctx, idx, sync_info);
     }
 }
 
-impl Destroy<Context> for Offscreen {
+impl Destroy<Context> for Pipeline {
+    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+        self.pipeline.destroy_with(ctx);
+        ctx.destroy_render_pass(self.render_pass, None);
+        self.data.destroy_with(ctx);
+    }
+}
+
+impl Destroy<Context> for Data {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.models.destroy_with(ctx);
         self.uniforms.destroy_with(ctx);
+    }
+}
+
+impl Deref for Pipeline {
+    type Target = Data;
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl DerefMut for Pipeline {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
     }
 }

@@ -1,11 +1,16 @@
 use ash::{extensions::khr, vk};
 
-use crate::gpu::{context::Context, framebuffers::Framebuffers, image::Image, Destroy};
+use crate::gpu::{
+    context::Context,
+    framebuffers::Framebuffers,
+    image::{format, Image},
+    Destroy,
+};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
     pub handle: khr::Swapchain,
-    pub render_target: Framebuffers<{ vk::Format::UNDEFINED }>,
+    pub render_target: Framebuffers<{ format::SWAPCHAIN }>,
 }
 
 impl Swapchain {

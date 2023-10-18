@@ -1,12 +1,15 @@
+use std::ops::Deref;
+
 use ash::vk;
 
 use crate::gpu::{
-    commands::Commands,
     context::Context,
     descriptors::Descriptors,
+    framebuffers::{self, Framebuffers},
     image::{format, Image},
-    pipeline::{Contents, Graphics, Pipeline},
+    pipeline,
     sampler::Sampler,
+    sync_info::SyncInfo,
     Destroy,
 };
 
@@ -18,83 +21,75 @@ mod conf {
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"frag_main\0") };
 }
 
-type Spec = Graphics<{ vk::Format::UNDEFINED }>;
-pub type TonemapPipeline = Pipeline<Spec, Tonemap>;
-
-pub struct Tonemap {
-    input_image: Image<{ super::super::conf::OUTPUT_IMAGE_FORMAT }>,
+pub struct Data {
+    input_image: Image<{ super::offscreen::conf::IMAGE_FORMAT }>,
     sampler: Sampler,
 }
 
-impl Tonemap {
-    pub fn create_for(
+pub struct Pipeline {
+    data: Data,
+    pub render_pass: vk::RenderPass,
+    pipeline: pipeline::Pipeline,
+}
+
+impl Data {
+    pub fn create(
         ctx: &Context,
-        input_image: Image<{ super::super::conf::OUTPUT_IMAGE_FORMAT }>,
+        input_image: Image<{ super::offscreen::conf::IMAGE_FORMAT }>,
     ) -> Self {
         Self {
             input_image,
             sampler: Sampler::create(ctx),
         }
     }
+
+    fn bind_to_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
+        for &set in &descriptors.sets {
+            let rendered_image_info = [vk::DescriptorImageInfo::builder()
+                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image_view(self.input_image.view)
+                .sampler(*self.sampler)
+                .build()];
+
+            let writes = [vk::WriteDescriptorSet::builder()
+                .dst_set(set)
+                .dst_binding(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .image_info(&rendered_image_info)
+                .build()];
+
+            unsafe {
+                ctx.update_descriptor_sets(&writes, &[]);
+            }
+        }
+    }
 }
 
-impl Contents<Spec> for Tonemap {
-    fn num_command_sets(ctx: &Context) -> u32 {
-        ctx.surface.config.image_count
-    }
+impl Pipeline {
+    pub fn create(ctx: &mut Context, data: Data) -> Self {
+        let render_pass = Self::create_render_pass(ctx);
+        let descriptors = Self::create_descriptors(ctx);
+        let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, descriptors.layout);
 
-    fn render_area(ctx: &Context) -> vk::Rect2D {
-        vk::Rect2D {
-            extent: ctx.surface.config.extent,
-            ..Default::default()
+        data.bind_to_descriptors(ctx, &descriptors);
+
+        let pipeline = pipeline::Pipeline::new(
+            ctx,
+            descriptors,
+            layout,
+            pipeline,
+            ctx.queues.graphics(),
+            ctx.surface.config.image_count as _,
+        );
+
+        Self {
+            data,
+            render_pass,
+            pipeline,
         }
     }
 
-    fn create_descriptors(ctx: &Context) -> Descriptors {
-        let layout = {
-            let bindings = [vk::DescriptorSetLayoutBinding::builder()
-                .binding(0)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-                .build()];
-            let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
-            unsafe {
-                ctx.create_descriptor_set_layout(&info, None)
-                    .expect("Failed to create descriptor set layout")
-            }
-        };
-
-        let pool = {
-            let num_frames = ctx.surface.config.image_count;
-            let sizes = [vk::DescriptorPoolSize::builder()
-                .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .descriptor_count(num_frames)
-                .build()];
-            let info = vk::DescriptorPoolCreateInfo::builder()
-                .pool_sizes(&sizes)
-                .max_sets(num_frames);
-            unsafe {
-                ctx.create_descriptor_pool(&info, None)
-                    .expect("Failed to create descriptor pool")
-            }
-        };
-
-        let sets = {
-            let layouts = vec![layout; ctx.surface.config.image_count as usize];
-            let info = vk::DescriptorSetAllocateInfo::builder()
-                .descriptor_pool(pool)
-                .set_layouts(&layouts);
-            unsafe {
-                ctx.allocate_descriptor_sets(&info)
-                    .expect("Failed to allocate descriptor sets")
-            }
-        };
-
-        Descriptors { layout, pool, sets }
-    }
-
-    fn create_specialization(ctx: &Context) -> Spec {
+    fn create_render_pass(ctx: &Context) -> vk::RenderPass {
         let attachments = [
             vk::AttachmentDescription::builder()
                 .format(ctx.surface.config.surface_format.format)
@@ -147,12 +142,59 @@ impl Contents<Spec> for Tonemap {
             .subpasses(&subpasses)
             .dependencies(&dependencies);
 
-        Graphics::create(ctx, &render_pass_info)
+        unsafe {
+            ctx.create_render_pass(&render_pass_info, None)
+                .expect("Failed to create render pass")
+        }
+    }
+
+    fn create_descriptors(ctx: &Context) -> Descriptors {
+        let layout = {
+            let bindings = [vk::DescriptorSetLayoutBinding::builder()
+                .binding(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+                .build()];
+            let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
+            unsafe {
+                ctx.create_descriptor_set_layout(&info, None)
+                    .expect("Failed to create descriptor set layout")
+            }
+        };
+
+        let pool = {
+            let num_frames = ctx.surface.config.image_count;
+            let sizes = [vk::DescriptorPoolSize::builder()
+                .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_count(num_frames)
+                .build()];
+            let info = vk::DescriptorPoolCreateInfo::builder()
+                .pool_sizes(&sizes)
+                .max_sets(num_frames);
+            unsafe {
+                ctx.create_descriptor_pool(&info, None)
+                    .expect("Failed to create descriptor pool")
+            }
+        };
+
+        let sets = {
+            let layouts = vec![layout; ctx.surface.config.image_count as usize];
+            let info = vk::DescriptorSetAllocateInfo::builder()
+                .descriptor_pool(pool)
+                .set_layouts(&layouts);
+            unsafe {
+                ctx.allocate_descriptor_sets(&info)
+                    .expect("Failed to allocate descriptor sets")
+            }
+        };
+
+        Descriptors { layout, pool, sets }
     }
 
     fn create_pipeline(
         ctx: &Context,
-        spec: &Spec,
+        render_pass: vk::RenderPass,
         descriptor_set_layout: vk::DescriptorSetLayout,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
         let shader_module = ctx.create_shader_module_from_file(conf::SHADER_FILE);
@@ -231,7 +273,7 @@ impl Contents<Spec> for Tonemap {
             .color_blend_state(&color_blend_info)
             .depth_stencil_state(&depth_stencil_info)
             .layout(layout)
-            .render_pass(spec.render_pass)
+            .render_pass(render_pass)
             .dynamic_state(&dynamic_state_info)
             .build()];
 
@@ -245,59 +287,89 @@ impl Contents<Spec> for Tonemap {
         (layout, pipeline)
     }
 
-    fn bind_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
-        for &set in &descriptors.sets {
-            let rendered_image_info = [vk::DescriptorImageInfo::builder()
-                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .image_view(self.input_image.view)
-                .sampler(*self.sampler)
-                .build()];
+    pub fn run(
+        &self,
+        ctx: &Context,
+        idx: usize,
+        sync_info: &SyncInfo,
+        output_to: &Framebuffers<{ format::SWAPCHAIN }>,
+    ) {
+        let commands = self.pipeline.begin_pipeline(ctx, idx);
 
-            let writes = [vk::WriteDescriptorSet::builder()
-                .dst_set(set)
-                .dst_binding(0)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(&rendered_image_info)
-                .build()];
-
-            unsafe {
-                ctx.update_descriptor_sets(&writes, &[]);
-            }
-        }
-    }
-
-    fn pre_pass(&self, ctx: &Context, commands: &Commands) {
         self.input_image
             .transition_layout_ready_to_read(ctx, commands.buffer);
-    }
 
-    fn record_commands(&self, ctx: &Context, commands: &Commands) {
-        let viewports = [vk::Viewport::builder()
-            .width(ctx.surface.config.extent.width as f32)
-            .height(ctx.surface.config.extent.height as f32)
-            .max_depth(1.0)
-            .build()];
-
-        let scissors = [vk::Rect2D::builder()
-            .extent(ctx.surface.config.extent)
-            .build()];
+        let render_pass_info = vk::RenderPassBeginInfo::builder()
+            .render_pass(self.render_pass)
+            .render_area(ctx.surface.config.extent.into())
+            .framebuffer(output_to.framebuffers[idx])
+            .clear_values(framebuffers::CLEAR_VALUES)
+            .build();
 
         unsafe {
+            ctx.cmd_begin_render_pass(
+                commands.buffer,
+                &render_pass_info,
+                vk::SubpassContents::INLINE,
+            );
+
+            ctx.cmd_bind_pipeline(
+                commands.buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                *self.pipeline,
+            );
+
+            ctx.cmd_bind_descriptor_sets(
+                commands.buffer,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline.layout,
+                0,
+                self.pipeline.descriptor_set(idx),
+                &[],
+            );
+
+            let viewports = [vk::Viewport::builder()
+                .width(ctx.surface.config.extent.width as f32)
+                .height(ctx.surface.config.extent.height as f32)
+                .max_depth(1.0)
+                .build()];
+
+            let scissors = [vk::Rect2D::builder()
+                .extent(ctx.surface.config.extent)
+                .build()];
+
             ctx.cmd_set_viewport_with_count(commands.buffer, &viewports);
             ctx.cmd_set_scissor_with_count(commands.buffer, &scissors);
             ctx.cmd_draw(commands.buffer, 3, 1, 0, 0);
-        }
-    }
 
-    fn post_pass(&self, ctx: &Context, commands: &Commands) {
+            ctx.cmd_end_render_pass(commands.buffer);
+        }
+
         self.input_image
             .transition_layout_ready_to_write(ctx, commands.buffer);
+
+        self.pipeline.submit_pipeline(ctx, idx, sync_info);
     }
 }
 
-impl Destroy<Context> for Tonemap {
+impl Destroy<Context> for Pipeline {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        self.sampler.destroy_with(ctx);
+        self.pipeline.destroy_with(ctx);
+        ctx.destroy_render_pass(self.render_pass, None);
+        self.data.destroy_with(ctx);
+    }
+}
+
+impl Destroy<Context> for Data {
+    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.input_image.destroy_with(ctx);
+        self.sampler.destroy_with(ctx);
+    }
+}
+
+impl Deref for Pipeline {
+    type Target = Data;
+    fn deref(&self) -> &Self::Target {
+        &self.data
     }
 }
