@@ -43,7 +43,7 @@ impl Data {
     fn bind_to_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
         for &set in &descriptors.sets {
             let rendered_image_info = [vk::DescriptorImageInfo::builder()
-                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image_layout(vk::ImageLayout::GENERAL)
                 .image_view(self.input_image.view)
                 .sampler(*self.sampler)
                 .build()];
@@ -293,9 +293,6 @@ impl Pipeline {
     ) {
         let commands = self.pipeline.begin_pipeline(ctx, idx);
 
-        self.input_image
-            .transition_layout_ready_to_read(ctx, commands.buffer);
-
         let render_pass_info = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass)
             .render_area(ctx.surface.config.extent.into())
@@ -341,9 +338,6 @@ impl Pipeline {
 
             ctx.cmd_end_render_pass(commands.buffer);
         }
-
-        self.input_image
-            .transition_layout_ready_to_write(ctx, commands.buffer);
 
         self.pipeline.submit_pipeline(ctx, idx, sync_info);
     }

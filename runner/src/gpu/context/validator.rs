@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use ash::vk;
 
 mod conf {
-    pub const VALIDATE_LAYERS: bool = cfg!(debug_assertions);
+    pub const VALIDATE_LAYERS: bool = true; // cfg!(debug_assertions);
     pub const VALIDATION_LAYERS: &[*const std::ffi::c_char] = unsafe {
         &[
             std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0")

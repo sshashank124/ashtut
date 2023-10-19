@@ -7,7 +7,7 @@ use crate::gpu::{
     context::Context,
     descriptors::Descriptors,
     framebuffers::{self, Framebuffers},
-    image::format,
+    image::{format, Image},
     model::Model,
     pipeline,
     scope::OneshotScope,
@@ -17,12 +17,6 @@ use crate::gpu::{
 };
 
 pub mod conf {
-    const HEIGHT: u32 = 768;
-    pub const FRAME_RESOLUTION: ash::vk::Extent2D = ash::vk::Extent2D {
-        height: HEIGHT,
-        width: (HEIGHT as f32 * super::super::super::conf::ASPECT_RATIO) as _,
-    };
-
     pub const SHADER_FILE: &str = env!("raster.spv");
     pub const STAGE_VERTEX: &std::ffi::CStr =
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"vert_main\0") };
@@ -58,7 +52,7 @@ impl Data {
             .range(vk::WHOLE_SIZE)
             .build()];
 
-        let sampled_image_info = [vk::DescriptorImageInfo::builder()
+        let texture_info = [vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .image_view(self.models[0].texture.image.view)
             .sampler(*self.models[0].texture.sampler)
@@ -75,7 +69,7 @@ impl Data {
                 .dst_set(descriptors.sets[0])
                 .dst_binding(1)
                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(&sampled_image_info)
+                .image_info(&texture_info)
                 .build(),
         ];
 
@@ -86,11 +80,16 @@ impl Data {
 }
 
 impl Pipeline {
-    pub fn create(ctx: &mut Context, data: Data) -> Self {
+    pub fn create(ctx: &mut Context, data: Data, target: &Image<{ format::HDR }>) -> Self {
         let render_pass = Self::create_render_pass(ctx);
 
-        let target =
-            Framebuffers::create(ctx, "Render target", render_pass, conf::FRAME_RESOLUTION);
+        let target = Framebuffers::create(
+            ctx,
+            "Render target",
+            render_pass,
+            super::super::conf::FRAME_RESOLUTION,
+            std::slice::from_ref(target),
+        );
 
         let descriptors = Self::create_descriptors(ctx);
         data.bind_to_descriptors(ctx, &descriptors);
@@ -117,7 +116,7 @@ impl Pipeline {
                 .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
                 .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
                 .initial_layout(vk::ImageLayout::UNDEFINED)
-                .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .final_layout(vk::ImageLayout::GENERAL)
                 .build(),
             vk::AttachmentDescription::builder()
                 .format(format::DEPTH)
@@ -132,7 +131,7 @@ impl Pipeline {
         ];
 
         let color_attachment_references = [vk::AttachmentReference::builder()
-            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .layout(vk::ImageLayout::GENERAL)
             .attachment(0)
             .build()];
 
@@ -252,12 +251,14 @@ impl Pipeline {
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
 
         let viewports = [vk::Viewport::builder()
-            .width(conf::FRAME_RESOLUTION.width as f32)
-            .height(conf::FRAME_RESOLUTION.height as f32)
+            .width(super::super::conf::FRAME_RESOLUTION.width as f32)
+            .height(super::super::conf::FRAME_RESOLUTION.height as f32)
             .max_depth(1.0)
             .build()];
 
-        let scissors = [vk::Rect2D::builder().extent(conf::FRAME_RESOLUTION).build()];
+        let scissors = [vk::Rect2D::builder()
+            .extent(super::super::conf::FRAME_RESOLUTION)
+            .build()];
 
         let viewport_info = vk::PipelineViewportStateCreateInfo::builder()
             .viewports(&viewports)
@@ -329,7 +330,7 @@ impl Pipeline {
 
         let render_pass_info = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass)
-            .render_area(conf::FRAME_RESOLUTION.into())
+            .render_area(super::super::conf::FRAME_RESOLUTION.into())
             .framebuffer(self.target.framebuffers[0])
             .clear_values(framebuffers::CLEAR_VALUES)
             .build();

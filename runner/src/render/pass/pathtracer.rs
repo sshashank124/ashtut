@@ -10,57 +10,43 @@ use crate::gpu::{
     model::Model,
     pipeline,
     scope::OneshotScope,
+    shader_binding_table::{RayTracingShaders, ShaderBindingTable},
     sync_info::SyncInfo,
     Destroy,
 };
 
 pub mod conf {
-    const HEIGHT: u32 = 768;
-    pub const FRAME_RESOLUTION: ash::vk::Extent2D = ash::vk::Extent2D {
-        height: HEIGHT,
-        width: (HEIGHT as f32 * super::super::super::conf::ASPECT_RATIO) as _,
-    };
-
     pub const SHADER_FILE: &str = env!("pathtracer.spv");
-    pub const STAGE_RAY_GENERATION: &std::ffi::CStr =
-        unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"ray_generation\0") };
-    pub const STAGE_MISS: &std::ffi::CStr =
-        unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"miss\0") };
-    pub const STAGE_CLOSEST_HIT: &std::ffi::CStr =
-        unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"closest_hit\0") };
+    pub const STAGE_RAY_GENERATION: &str = "ray_generation";
+    pub const STAGES_MISS: &[&str] = &["miss"];
+    pub const STAGES_CLOSEST_HIT: &[&str] = &["closest_hit"];
 }
 
 pub struct Data {
+    pub target: Image<{ format::HDR }>,
     models: Vec<Model>,
     accel: AccelerationStructures,
-    target: Image<{ format::HDR }>,
 }
 
 pub struct Pipeline {
     data: Data,
     pipeline: pipeline::Pipeline,
+    shader_binding_table: ShaderBindingTable,
 }
 
 impl Data {
-    pub fn create(ctx: &mut Context) -> Self {
+    pub fn create(ctx: &mut Context, target: &Image<{ format::HDR }>) -> Self {
         let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.graphics());
+        let target = Image::new(ctx, target.image, format::HDR, None);
         let models = vec![Model::demo_viking_room(ctx, &mut init_scope)];
-        let target = {
-            let info = vk::ImageCreateInfo {
-                extent: conf::FRAME_RESOLUTION.into(),
-                usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::STORAGE,
-                ..Default::default()
-            };
-            Image::create(ctx, "Pathtracer Target", &info)
-        };
         init_scope.finish(ctx);
 
         let accel = AccelerationStructures::build(ctx, &models);
 
         Self {
+            target,
             models,
             accel,
-            target,
         }
     }
 
@@ -101,14 +87,27 @@ impl Data {
 impl Pipeline {
     pub fn create(ctx: &mut Context, data: Data) -> Self {
         let descriptors = Self::create_descriptors(ctx);
-        let (layout, pipeline) = Self::create_pipeline(ctx, descriptors.layout);
-
         data.bind_to_descriptors(ctx, &descriptors);
+
+        let ray_tracing_shaders = RayTracingShaders::new(
+            ctx,
+            conf::SHADER_FILE,
+            conf::STAGE_RAY_GENERATION,
+            conf::STAGES_MISS,
+            conf::STAGES_CLOSEST_HIT,
+        );
+        let (layout, pipeline) =
+            Self::create_pipeline(ctx, descriptors.layout, &ray_tracing_shaders);
+        let shader_binding_table = ShaderBindingTable::create(ctx, ray_tracing_shaders, pipeline);
 
         let pipeline =
             pipeline::Pipeline::new(ctx, descriptors, layout, pipeline, ctx.queues.graphics(), 1);
 
-        Self { data, pipeline }
+        Self {
+            data,
+            pipeline,
+            shader_binding_table,
+        }
     }
 
     fn create_descriptors(ctx: &Context) -> Descriptors {
@@ -171,50 +170,8 @@ impl Pipeline {
     fn create_pipeline(
         ctx: &Context,
         descriptor_set_layout: vk::DescriptorSetLayout,
+        ray_tracing_shaders: &RayTracingShaders,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
-        let shader_module = ctx.create_shader_module_from_file(conf::SHADER_FILE);
-        let shader_stages = [
-            vk::PipelineShaderStageCreateInfo::builder()
-                .stage(vk::ShaderStageFlags::RAYGEN_KHR)
-                .module(shader_module)
-                .name(conf::STAGE_RAY_GENERATION)
-                .build(),
-            vk::PipelineShaderStageCreateInfo::builder()
-                .stage(vk::ShaderStageFlags::MISS_KHR)
-                .module(shader_module)
-                .name(conf::STAGE_MISS)
-                .build(),
-            vk::PipelineShaderStageCreateInfo::builder()
-                .stage(vk::ShaderStageFlags::CLOSEST_HIT_KHR)
-                .module(shader_module)
-                .name(conf::STAGE_CLOSEST_HIT)
-                .build(),
-        ];
-
-        let shader_groups = [
-            vk::RayTracingShaderGroupCreateInfoKHR::builder()
-                .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                .general_shader(0)
-                .closest_hit_shader(vk::SHADER_UNUSED_KHR)
-                .any_hit_shader(vk::SHADER_UNUSED_KHR)
-                .intersection_shader(vk::SHADER_UNUSED_KHR)
-                .build(),
-            vk::RayTracingShaderGroupCreateInfoKHR::builder()
-                .ty(vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                .general_shader(1)
-                .closest_hit_shader(vk::SHADER_UNUSED_KHR)
-                .any_hit_shader(vk::SHADER_UNUSED_KHR)
-                .intersection_shader(vk::SHADER_UNUSED_KHR)
-                .build(),
-            vk::RayTracingShaderGroupCreateInfoKHR::builder()
-                .ty(vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
-                .general_shader(vk::SHADER_UNUSED_KHR)
-                .closest_hit_shader(2)
-                .any_hit_shader(vk::SHADER_UNUSED_KHR)
-                .intersection_shader(vk::SHADER_UNUSED_KHR)
-                .build(),
-        ];
-
         let descriptor_set_layouts = [descriptor_set_layout];
         let layout_create_info =
             vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
@@ -225,8 +182,8 @@ impl Pipeline {
         };
 
         let create_infos = [vk::RayTracingPipelineCreateInfoKHR::builder()
-            .stages(&shader_stages)
-            .groups(&shader_groups)
+            .stages(&ray_tracing_shaders.stages_create_infos())
+            .groups(&ray_tracing_shaders.groups_create_infos())
             .max_pipeline_ray_recursion_depth(1)
             .layout(layout)
             .build()];
@@ -243,58 +200,47 @@ impl Pipeline {
                 .expect("Failed to create pipeline")[0]
         };
 
-        unsafe { ctx.destroy_shader_module(shader_module, None) };
-
         (layout, pipeline)
     }
 
-    pub fn run(&self, ctx: &Context, idx: usize, sync_info: &SyncInfo) {
-        let commands = self.pipeline.begin_pipeline(ctx, idx);
+    pub fn run(&self, ctx: &Context, sync_info: &SyncInfo) {
+        let commands = self.pipeline.begin_pipeline(ctx, 0);
 
         unsafe {
             ctx.cmd_bind_pipeline(
                 commands.buffer,
-                vk::PipelineBindPoint::GRAPHICS,
+                vk::PipelineBindPoint::RAY_TRACING_KHR,
                 *self.pipeline,
             );
 
             ctx.cmd_bind_descriptor_sets(
                 commands.buffer,
-                vk::PipelineBindPoint::GRAPHICS,
+                vk::PipelineBindPoint::RAY_TRACING_KHR,
                 self.pipeline.layout,
                 0,
-                self.pipeline.descriptor_set(idx),
+                self.pipeline.descriptor_set(0),
                 &[],
             );
 
-            let vertex_buffers = [*self.models[0].vertex_index_buffer];
-            ctx.cmd_bind_vertex_buffers(commands.buffer, 0, &vertex_buffers, &[0]);
-
-            ctx.cmd_bind_index_buffer(
+            ctx.ext.ray_tracing.cmd_trace_rays(
                 commands.buffer,
-                *self.models[0].vertex_index_buffer,
-                self.models[0].mesh.indices_offset() as _,
-                vk::IndexType::UINT32,
-            );
-
-            ctx.cmd_draw_indexed(
-                commands.buffer,
-                self.models[0].mesh.indices.len() as _,
+                &self.shader_binding_table.raygen_region,
+                &self.shader_binding_table.misses_region,
+                &self.shader_binding_table.closest_hits_region,
+                &self.shader_binding_table.call_region,
+                super::super::conf::FRAME_RESOLUTION.width,
+                super::super::conf::FRAME_RESOLUTION.height,
                 1,
-                0,
-                0,
-                0,
             );
-
-            ctx.cmd_end_render_pass(commands.buffer);
         }
 
-        self.pipeline.submit_pipeline(ctx, idx, sync_info);
+        self.pipeline.submit_pipeline(ctx, 0, sync_info);
     }
 }
 
 impl Destroy<Context> for Pipeline {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+        self.shader_binding_table.destroy_with(ctx);
         self.pipeline.destroy_with(ctx);
         self.data.destroy_with(ctx);
     }

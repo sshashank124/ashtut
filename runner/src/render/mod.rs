@@ -1,6 +1,7 @@
 pub mod pass;
 mod sync_state;
 
+use ash::vk;
 use shared::UniformObjects;
 
 use crate::gpu::{
@@ -18,10 +19,17 @@ use self::{
 
 pub mod conf {
     pub const ASPECT_RATIO: f32 = 4.0 / 3.0;
+    const HEIGHT: u32 = 768;
+    pub const FRAME_RESOLUTION: ash::vk::Extent2D = ash::vk::Extent2D {
+        height: HEIGHT,
+        width: (HEIGHT as f32 * ASPECT_RATIO) as _,
+    };
 }
 
 pub struct Renderer {
     // offscreen pass
+    target: Image<{ format::HDR }>,
+    pathtracer_pipeline: pathtracer::Pipeline,
     offscreen_pipeline: offscreen::Pipeline,
 
     // tonemap pass
@@ -29,6 +37,7 @@ pub struct Renderer {
     swapchain: Swapchain,
 
     // state
+    pub use_pathtracer: bool,
     state: SyncState,
 }
 
@@ -38,23 +47,27 @@ pub enum Error {
 
 impl Renderer {
     pub fn create(ctx: &mut Context) -> Self {
-        let mut pathtracer_pipeline = {
-            let data = pathtracer::Data::create(ctx);
+        let target = {
+            let info = vk::ImageCreateInfo {
+                extent: conf::FRAME_RESOLUTION.into(),
+                usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::STORAGE,
+                ..Default::default()
+            };
+            Image::create(ctx, "Intermediate Target", &info)
+        };
+
+        let pathtracer_pipeline = {
+            let data = pathtracer::Data::create(ctx, &target);
             pathtracer::Pipeline::create(ctx, data)
         };
 
         let offscreen_pipeline = {
             let data = offscreen::Data::create(ctx);
-            offscreen::Pipeline::create(ctx, data)
+            offscreen::Pipeline::create(ctx, data, &target)
         };
 
         let tonemap_pipeline = {
-            let input_image = Image::new(
-                ctx,
-                offscreen_pipeline.target.colors[0].image,
-                format::HDR,
-                None,
-            );
+            let input_image = Image::new(ctx, target.image, format::HDR, None);
             let data = tonemap::Data::create(ctx, input_image);
             tonemap::Pipeline::create(ctx, data)
         };
@@ -63,14 +76,15 @@ impl Renderer {
 
         let state = SyncState::create(ctx);
 
-        unsafe { pathtracer_pipeline.destroy_with(ctx) };
-
         Self {
+            target,
+            pathtracer_pipeline,
             offscreen_pipeline,
 
             tonemap_pipeline,
             swapchain,
 
+            use_pathtracer: false,
             state,
         }
     }
@@ -81,9 +95,12 @@ impl Renderer {
                 .expect("Failed to wait for fence");
         }
 
-        self.offscreen_pipeline.uniforms.update(uniforms);
-
-        self.offscreen_pipeline.run(ctx, &SyncInfo::default());
+        if self.use_pathtracer {
+            self.pathtracer_pipeline.run(ctx, &SyncInfo::default());
+        } else {
+            self.offscreen_pipeline.uniforms.update(uniforms);
+            self.offscreen_pipeline.run(ctx, &SyncInfo::default());
+        }
 
         let (image_index, needs_recreating) = self
             .swapchain
@@ -104,7 +121,7 @@ impl Renderer {
                     signal_to: self.state.render_finished_semaphore(),
                     fence: Some(self.state.in_flight_fence()[0]),
                 },
-                &self.swapchain.render_target,
+                &self.swapchain.target,
             );
 
             self.swapchain
@@ -134,5 +151,7 @@ impl Destroy<Context> for Renderer {
         self.tonemap_pipeline.destroy_with(ctx);
 
         self.offscreen_pipeline.destroy_with(ctx);
+        self.pathtracer_pipeline.destroy_with(ctx);
+        self.target.destroy_with(ctx);
     }
 }

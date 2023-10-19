@@ -18,7 +18,7 @@ mod conf {
 
 pub struct App {
     ctx: Context,
-    render_pipeline: render::Renderer,
+    renderer: render::Renderer,
 
     // state
     uniforms: UniformObjects,
@@ -30,7 +30,7 @@ pub struct App {
 impl App {
     pub fn new(window: &Window) -> Self {
         let mut ctx = Context::init(window);
-        let render_pipeline = render::Renderer::create(&mut ctx);
+        let renderer = render::Renderer::create(&mut ctx);
 
         let uniforms = UniformObjects {
             transforms: shared::ModelViewProjection::new(
@@ -51,7 +51,7 @@ impl App {
 
         Self {
             ctx,
-            render_pipeline,
+            renderer,
 
             uniforms,
             needs_resizing: false,
@@ -69,6 +69,8 @@ impl App {
             }
         }
 
+        self.renderer.use_pathtracer = self.ctx.surface.config.extent.width > 1200;
+
         let millis_for_1_rotation = 3000;
         let frac_millis = (self.start_time.elapsed().as_millis() % millis_for_1_rotation) as f32
             / millis_for_1_rotation as f32;
@@ -76,7 +78,7 @@ impl App {
         self.uniforms.transforms.model = glam::Mat4::from_rotation_z(rotation_angle);
 
         if matches!(
-            self.render_pipeline.render(&self.ctx, &self.uniforms),
+            self.renderer.render(&self.ctx, &self.uniforms),
             Err(render::Error::NeedsRecreating)
         ) {
             self.needs_resizing = true;
@@ -92,7 +94,7 @@ impl App {
         unsafe { self.ctx.wait_idle() };
         let is_valid = self.ctx.refresh_surface_capabilities();
         if is_valid {
-            self.render_pipeline.recreate(&mut self.ctx);
+            self.renderer.recreate(&mut self.ctx);
         }
         is_valid
     }
@@ -133,7 +135,7 @@ impl Drop for App {
     fn drop(&mut self) {
         unsafe {
             self.ctx.wait_idle();
-            self.render_pipeline.destroy_with(&mut self.ctx);
+            self.renderer.destroy_with(&mut self.ctx);
             self.ctx.destroy_with(&mut ());
         }
     }

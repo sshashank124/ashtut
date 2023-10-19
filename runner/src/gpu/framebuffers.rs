@@ -21,18 +21,17 @@ pub const CLEAR_VALUES: &[vk::ClearValue] = &[
 ];
 
 pub struct Framebuffers<const FORMAT: vk::Format> {
-    pub colors: Vec<Image<FORMAT>>,
     pub depth: Image<{ format::DEPTH }>,
     pub framebuffers: Vec<vk::Framebuffer>,
 }
 
 impl<const FORMAT: vk::Format> Framebuffers<{ FORMAT }> {
-    pub fn create_for_images(
+    pub fn create(
         ctx: &mut Context,
         name: &str,
         render_pass: vk::RenderPass,
         resolution: vk::Extent2D,
-        colors: Vec<Image<{ FORMAT }>>,
+        colors: &[Image<{ FORMAT }>],
     ) -> Self {
         let depth = {
             let info = vk::ImageCreateInfo {
@@ -58,28 +57,9 @@ impl<const FORMAT: vk::Format> Framebuffers<{ FORMAT }> {
             .expect("Failed to create framebuffers");
 
         Self {
-            colors,
             depth,
             framebuffers,
         }
-    }
-
-    pub fn create(
-        ctx: &mut Context,
-        name: &str,
-        render_pass: vk::RenderPass,
-        resolution: vk::Extent2D,
-    ) -> Self {
-        let colors = {
-            let info = vk::ImageCreateInfo {
-                extent: resolution.into(),
-                usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
-                ..Default::default()
-            };
-            vec![Image::create(ctx, &format!("{name} [COLOR]"), &info)]
-        };
-
-        Self::create_for_images(ctx, name, render_pass, resolution, colors)
     }
 }
 
@@ -89,6 +69,5 @@ impl<const FORMAT: vk::Format> Destroy<Context> for Framebuffers<{ FORMAT }> {
             .iter()
             .for_each(|&fb| ctx.destroy_framebuffer(fb, None));
         self.depth.destroy_with(ctx);
-        self.colors.destroy_with(ctx);
     }
 }

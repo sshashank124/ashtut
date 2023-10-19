@@ -9,7 +9,8 @@ use crate::gpu::{
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
-    pub render_target: Framebuffers<{ format::SWAPCHAIN }>,
+    images: Vec<Image<{ format::SWAPCHAIN }>>,
+    pub target: Framebuffers<{ format::SWAPCHAIN }>,
 }
 
 impl Swapchain {
@@ -45,17 +46,18 @@ impl Swapchain {
         .map(|image| Image::new(ctx, image, ctx.surface.config.surface_format.format, None))
         .collect::<Vec<_>>();
 
-        let render_target = Framebuffers::create_for_images(
+        let target = Framebuffers::create(
             ctx,
             "Swapchain",
             render_pass,
             ctx.surface.config.extent,
-            images,
+            &images,
         );
 
         Self {
             swapchain,
-            render_target,
+            images,
+            target,
         }
     }
 
@@ -94,7 +96,8 @@ impl Swapchain {
 
 impl Destroy<Context> for Swapchain {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        self.render_target.destroy_with(ctx);
+        self.target.destroy_with(ctx);
+        self.images.destroy_with(ctx);
         ctx.ext.swapchain.destroy_swapchain(self.swapchain, None);
     }
 }

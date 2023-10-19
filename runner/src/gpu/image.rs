@@ -144,51 +144,6 @@ impl<const FORMAT: vk::Format> Image<FORMAT> {
     }
 }
 
-impl Image<{ format::HDR }> {
-    pub fn transition_layout_ready_to_write(
-        &self,
-        ctx: &Context,
-        command_buffer: vk::CommandBuffer,
-    ) {
-        self.transition_layout(
-            ctx,
-            command_buffer,
-            [
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-            ],
-            [
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            ],
-            [
-                vk::AccessFlags::empty(),
-                vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            ],
-        );
-    }
-
-    pub fn transition_layout_ready_to_read(
-        &self,
-        ctx: &Context,
-        command_buffer: vk::CommandBuffer,
-    ) {
-        self.transition_layout(
-            ctx,
-            command_buffer,
-            [
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            ],
-            [
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::FRAGMENT_SHADER,
-            ],
-            [vk::AccessFlags::empty(), vk::AccessFlags::SHADER_READ],
-        );
-    }
-}
-
 impl Image<{ format::COLOR }> {
     pub fn create_from_image(
         ctx: &mut Context,
