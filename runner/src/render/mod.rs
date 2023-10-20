@@ -1,6 +1,8 @@
 pub mod pass;
 mod sync_state;
 
+use std::slice;
+
 use ash::vk;
 use shared::UniformObjects;
 
@@ -91,8 +93,12 @@ impl Renderer {
 
     pub fn render(&mut self, ctx: &Context, uniforms: &UniformObjects) -> Result<(), Error> {
         unsafe {
-            ctx.wait_for_fences(self.state.in_flight_fence(), true, u64::MAX)
-                .expect("Failed to wait for fence");
+            ctx.wait_for_fences(
+                slice::from_ref(&self.state.in_flight_fence()),
+                true,
+                u64::MAX,
+            )
+            .expect("Failed to wait for fence");
         }
 
         if self.use_pathtracer {
@@ -104,12 +110,12 @@ impl Renderer {
 
         let (image_index, needs_recreating) = self
             .swapchain
-            .get_next_image(ctx, self.state.image_available_semaphore()[0]);
+            .get_next_image(ctx, self.state.image_available_semaphore());
         let image_index = image_index as usize;
 
         let needs_recreating = needs_recreating || {
             unsafe {
-                ctx.reset_fences(self.state.in_flight_fence())
+                ctx.reset_fences(slice::from_ref(&self.state.in_flight_fence()))
                     .expect("Failed to reset fence");
             }
 
@@ -117,15 +123,18 @@ impl Renderer {
                 ctx,
                 image_index,
                 &SyncInfo {
-                    wait_on: self.state.image_available_semaphore(),
-                    signal_to: self.state.render_finished_semaphore(),
-                    fence: Some(self.state.in_flight_fence()[0]),
+                    wait_on: Some(self.state.image_available_semaphore()),
+                    signal_to: Some(self.state.render_finished_semaphore()),
+                    fence: Some(self.state.in_flight_fence()),
                 },
                 &self.swapchain.target,
             );
 
-            self.swapchain
-                .present_to_when(ctx, image_index, self.state.render_finished_semaphore())
+            self.swapchain.present_to_when(
+                ctx,
+                image_index,
+                slice::from_ref(&self.state.render_finished_semaphore()),
+            )
         };
 
         self.state.advance();

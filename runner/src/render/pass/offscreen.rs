@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    slice,
+};
 
 use ash::vk;
 use shared::Vertex;
@@ -47,29 +50,27 @@ impl Data {
     }
 
     pub fn bind_to_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
-        let buffer_infos = [vk::DescriptorBufferInfo::builder()
+        let buffer_info = vk::DescriptorBufferInfo::builder()
             .buffer(*self.uniforms.buffer)
-            .range(vk::WHOLE_SIZE)
-            .build()];
+            .range(vk::WHOLE_SIZE);
 
-        let texture_info = [vk::DescriptorImageInfo::builder()
+        let texture_info = vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .image_view(self.models[0].texture.image.view)
-            .sampler(*self.models[0].texture.sampler)
-            .build()];
+            .sampler(*self.models[0].texture.sampler);
 
         let writes = [
             vk::WriteDescriptorSet::builder()
                 .dst_set(descriptors.sets[0])
                 .dst_binding(0)
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(&buffer_infos)
+                .buffer_info(slice::from_ref(&buffer_info))
                 .build(),
             vk::WriteDescriptorSet::builder()
                 .dst_set(descriptors.sets[0])
                 .dst_binding(1)
                 .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(&texture_info)
+                .image_info(slice::from_ref(&texture_info))
                 .build(),
         ];
 
@@ -130,34 +131,31 @@ impl Pipeline {
                 .build(),
         ];
 
-        let color_attachment_references = [vk::AttachmentReference::builder()
+        let color_attachment_reference = vk::AttachmentReference::builder()
             .layout(vk::ImageLayout::GENERAL)
-            .attachment(0)
-            .build()];
+            .attachment(0);
 
         let depth_attachment_reference = vk::AttachmentReference::builder()
             .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
             .attachment(1);
 
-        let subpasses = [vk::SubpassDescription::builder()
+        let subpass = vk::SubpassDescription::builder()
             .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-            .color_attachments(&color_attachment_references)
-            .depth_stencil_attachment(&depth_attachment_reference)
-            .build()];
+            .color_attachments(slice::from_ref(&color_attachment_reference))
+            .depth_stencil_attachment(&depth_attachment_reference);
 
-        let dependencies = [vk::SubpassDependency::builder()
+        let dependency = vk::SubpassDependency::builder()
             .src_subpass(vk::SUBPASS_EXTERNAL)
             .dst_subpass(0)
             .src_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
             .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
             .src_access_mask(vk::AccessFlags::SHADER_READ)
-            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-            .build()];
+            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
 
         let render_pass_info = vk::RenderPassCreateInfo::builder()
             .attachments(&attachments)
-            .subpasses(&subpasses)
-            .dependencies(&dependencies);
+            .subpasses(slice::from_ref(&subpass))
+            .dependencies(slice::from_ref(&dependency));
 
         unsafe {
             ctx.create_render_pass(&render_pass_info, None)
@@ -209,10 +207,9 @@ impl Pipeline {
         };
 
         let sets = {
-            let layouts = [layout];
             let info = vk::DescriptorSetAllocateInfo::builder()
                 .descriptor_pool(pool)
-                .set_layouts(&layouts);
+                .set_layouts(slice::from_ref(&layout));
             unsafe {
                 ctx.allocate_descriptor_sets(&info)
                     .expect("Failed to allocate descriptor sets")
@@ -250,19 +247,16 @@ impl Pipeline {
         let input_assembly_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
 
-        let viewports = [vk::Viewport::builder()
+        let viewport = vk::Viewport::builder()
             .width(super::super::conf::FRAME_RESOLUTION.width as f32)
             .height(super::super::conf::FRAME_RESOLUTION.height as f32)
-            .max_depth(1.0)
-            .build()];
+            .max_depth(1.0);
 
-        let scissors = [vk::Rect2D::builder()
-            .extent(super::super::conf::FRAME_RESOLUTION)
-            .build()];
+        let scissor = vk::Rect2D::builder().extent(super::super::conf::FRAME_RESOLUTION);
 
         let viewport_info = vk::PipelineViewportStateCreateInfo::builder()
-            .viewports(&viewports)
-            .scissors(&scissors);
+            .viewports(slice::from_ref(&viewport))
+            .scissors(slice::from_ref(&scissor));
 
         let rasterization_info = vk::PipelineRasterizationStateCreateInfo::builder()
             .line_width(1.0)
@@ -272,7 +266,7 @@ impl Pipeline {
         let multisample_info = vk::PipelineMultisampleStateCreateInfo::builder()
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
 
-        let color_blend_attachments = [vk::PipelineColorBlendAttachmentState::builder()
+        let color_blend_attachment = vk::PipelineColorBlendAttachmentState::builder()
             .color_write_mask(vk::ColorComponentFlags::RGBA)
             .blend_enable(true)
             .src_color_blend_factor(vk::BlendFactor::SRC_ALPHA)
@@ -280,10 +274,9 @@ impl Pipeline {
             .color_blend_op(vk::BlendOp::ADD)
             .src_alpha_blend_factor(vk::BlendFactor::ONE)
             .dst_alpha_blend_factor(vk::BlendFactor::ZERO)
-            .alpha_blend_op(vk::BlendOp::ADD)
-            .build()];
-        let color_blend_info =
-            vk::PipelineColorBlendStateCreateInfo::builder().attachments(&color_blend_attachments);
+            .alpha_blend_op(vk::BlendOp::ADD);
+        let color_blend_info = vk::PipelineColorBlendStateCreateInfo::builder()
+            .attachments(slice::from_ref(&color_blend_attachment));
 
         let depth_stencil_info = vk::PipelineDepthStencilStateCreateInfo::builder()
             .depth_test_enable(true)
@@ -293,16 +286,15 @@ impl Pipeline {
             .max_depth_bounds(1.0)
             .stencil_test_enable(false);
 
-        let descriptor_set_layouts = [descriptor_set_layout];
-        let layout_create_info =
-            vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
+        let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+            .set_layouts(slice::from_ref(&descriptor_set_layout));
 
         let layout = unsafe {
             ctx.create_pipeline_layout(&layout_create_info, None)
                 .expect("Failed to create pipeline layout")
         };
 
-        let create_infos = [vk::GraphicsPipelineCreateInfo::builder()
+        let create_info = vk::GraphicsPipelineCreateInfo::builder()
             .stages(&shader_stages)
             .vertex_input_state(&vertex_input_info)
             .input_assembly_state(&input_assembly_info)
@@ -312,12 +304,15 @@ impl Pipeline {
             .color_blend_state(&color_blend_info)
             .depth_stencil_state(&depth_stencil_info)
             .layout(layout)
-            .render_pass(render_pass)
-            .build()];
+            .render_pass(render_pass);
 
         let pipeline = unsafe {
-            ctx.create_graphics_pipelines(vk::PipelineCache::null(), &create_infos, None)
-                .expect("Failed to create pipeline")[0]
+            ctx.create_graphics_pipelines(
+                vk::PipelineCache::null(),
+                slice::from_ref(&create_info),
+                None,
+            )
+            .expect("Failed to create pipeline")[0]
         };
 
         unsafe { ctx.destroy_shader_module(shader_module, None) };
@@ -353,12 +348,16 @@ impl Pipeline {
                 vk::PipelineBindPoint::GRAPHICS,
                 self.pipeline.layout,
                 0,
-                self.pipeline.descriptor_set(0),
+                slice::from_ref(&self.pipeline.descriptors.sets[0]),
                 &[],
             );
 
-            let vertex_buffers = [*self.models[0].vertex_index_buffer];
-            ctx.cmd_bind_vertex_buffers(commands.buffer, 0, &vertex_buffers, &[0]);
+            ctx.cmd_bind_vertex_buffers(
+                commands.buffer,
+                0,
+                slice::from_ref(&self.models[0].vertex_index_buffer),
+                &[0],
+            );
 
             ctx.cmd_bind_index_buffer(
                 commands.buffer,

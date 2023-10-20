@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{ops::Deref, slice};
 
 use ash::vk;
 use shared::{bytemuck, Vertex};
@@ -100,17 +100,18 @@ impl AccelerationStructures {
                     vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
                     vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
                     vk::DependencyFlags::empty(),
-                    &[vk::MemoryBarrier::builder()
-                        .src_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR)
-                        .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR)
-                        .build()],
+                    slice::from_ref(
+                        &vk::MemoryBarrier::builder()
+                            .src_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR)
+                            .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR),
+                    ),
                     &[],
                     &[],
                 );
 
                 ctx.ext.accel.cmd_write_acceleration_structures_properties(
                     scope.commands.buffer,
-                    &[build_info.geometry.dst_acceleration_structure],
+                    slice::from_ref(&build_info.geometry.dst_acceleration_structure),
                     query_type,
                     *query_pool,
                     idx as _,
@@ -192,8 +193,8 @@ impl AccelerationStructure {
         unsafe {
             ctx.ext.accel.cmd_build_acceleration_structures(
                 scope.commands.buffer,
-                &[build_info.geometry],
-                &[&build_info.ranges],
+                slice::from_ref(&build_info.geometry),
+                slice::from_ref(&build_info.ranges.as_slice()),
             );
         }
 
@@ -352,7 +353,7 @@ impl InstancesInfo {
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 ..Default::default()
             },
-            &[bytemuck::cast_slice(&instances)],
+            slice::from_ref(&bytemuck::cast_slice(&instances)),
         );
 
         Self { instances, buffer }

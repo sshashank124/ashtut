@@ -1,4 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    slice,
+};
 
 use ash::vk;
 
@@ -51,14 +54,12 @@ impl Data {
     }
 
     pub fn bind_to_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
-        let tlas = [*self.accel.tlas];
         let mut accel_info = vk::WriteDescriptorSetAccelerationStructureKHR::builder()
-            .acceleration_structures(&tlas);
+            .acceleration_structures(slice::from_ref(&self.accel.tlas));
 
-        let target_info = [vk::DescriptorImageInfo::builder()
+        let target_info = vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::GENERAL)
-            .image_view(self.target.view)
-            .build()];
+            .image_view(self.target.view);
 
         let writes = [
             vk::WriteDescriptorSet {
@@ -74,7 +75,7 @@ impl Data {
                 .dst_set(descriptors.sets[0])
                 .dst_binding(1)
                 .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-                .image_info(&target_info)
+                .image_info(slice::from_ref(&target_info))
                 .build(),
         ];
 
@@ -154,10 +155,9 @@ impl Pipeline {
         };
 
         let sets = {
-            let layouts = [layout];
             let info = vk::DescriptorSetAllocateInfo::builder()
                 .descriptor_pool(pool)
-                .set_layouts(&layouts);
+                .set_layouts(slice::from_ref(&layout));
             unsafe {
                 ctx.allocate_descriptor_sets(&info)
                     .expect("Failed to allocate descriptor sets")
@@ -172,21 +172,21 @@ impl Pipeline {
         descriptor_set_layout: vk::DescriptorSetLayout,
         ray_tracing_shaders: &RayTracingShaders,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
-        let descriptor_set_layouts = [descriptor_set_layout];
-        let layout_create_info =
-            vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
+        let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+            .set_layouts(slice::from_ref(&descriptor_set_layout));
 
         let layout = unsafe {
             ctx.create_pipeline_layout(&layout_create_info, None)
                 .expect("Failed to create pipeline layout")
         };
 
-        let create_infos = [vk::RayTracingPipelineCreateInfoKHR::builder()
-            .stages(&ray_tracing_shaders.stages_create_infos())
-            .groups(&ray_tracing_shaders.groups_create_infos())
+        let stages = ray_tracing_shaders.stages_create_infos();
+        let groups = ray_tracing_shaders.groups_create_infos();
+        let create_info = vk::RayTracingPipelineCreateInfoKHR::builder()
+            .stages(&stages)
+            .groups(&groups)
             .max_pipeline_ray_recursion_depth(1)
-            .layout(layout)
-            .build()];
+            .layout(layout);
 
         let pipeline = unsafe {
             ctx.ext
@@ -194,7 +194,7 @@ impl Pipeline {
                 .create_ray_tracing_pipelines(
                     vk::DeferredOperationKHR::null(),
                     vk::PipelineCache::null(),
-                    &create_infos,
+                    slice::from_ref(&create_info),
                     None,
                 )
                 .expect("Failed to create pipeline")[0]
@@ -218,7 +218,7 @@ impl Pipeline {
                 vk::PipelineBindPoint::RAY_TRACING_KHR,
                 self.pipeline.layout,
                 0,
-                self.pipeline.descriptor_set(0),
+                slice::from_ref(&self.pipeline.descriptors.sets[0]),
                 &[],
             );
 

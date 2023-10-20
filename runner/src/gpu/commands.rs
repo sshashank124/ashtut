@@ -1,3 +1,5 @@
+use std::slice;
+
 use ash::vk;
 
 use super::{
@@ -5,7 +7,6 @@ use super::{
     Destroy,
 };
 
-#[allow(clippy::module_name_repetitions)]
 pub type Commands = CommandsT<true>;
 
 #[allow(clippy::module_name_repetitions)]
@@ -70,19 +71,18 @@ impl<const MULTI_USE: bool> CommandsT<{ MULTI_USE }> {
     }
 
     pub fn submit(&self, ctx: &Context, submit_info: &vk::SubmitInfo, fence: Option<vk::Fence>) {
-        let command_buffers = [self.buffer];
-        let submit_info = [vk::SubmitInfo {
-            command_buffer_count: command_buffers.len() as _,
-            p_command_buffers: command_buffers.as_ptr(),
+        let submit_info = vk::SubmitInfo {
+            command_buffer_count: 1,
+            p_command_buffers: slice::from_ref(&self.buffer).as_ptr(),
             ..*submit_info
-        }];
+        };
 
         unsafe {
             self.finish_recording(ctx);
 
             ctx.queue_submit(
                 self.queue,
-                &submit_info,
+                slice::from_ref(&submit_info),
                 fence.unwrap_or_else(vk::Fence::null),
             )
             .expect("Failed to submit commands to queue");

@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{ops::Deref, slice};
 
 use ash::vk;
 
@@ -55,7 +55,7 @@ impl Buffer {
         mut info: vk::BufferCreateInfo,
         data_sources: &[&[u8]],
     ) -> Self {
-        info.size = crate::util::total_size(data_sources) as u64;
+        info.size = Self::total_size_of_sources(data_sources);
         let mut buffer = Self::create(ctx, name, info, gpu_allocator::MemoryLocation::CpuToGpu);
         buffer.fill_from_sources(data_sources);
         buffer
@@ -79,7 +79,7 @@ impl Buffer {
         );
 
         info.usage |= vk::BufferUsageFlags::TRANSFER_DST;
-        info.size = crate::util::total_size(data_sources) as u64;
+        info.size = Self::total_size_of_sources(data_sources);
         let mut buffer = Self::create(ctx, name, info, gpu_allocator::MemoryLocation::GpuOnly);
         buffer.record_copy_from(ctx, scope.commands.buffer, &staging, info.size);
 
@@ -89,12 +89,7 @@ impl Buffer {
     }
 
     pub fn fill_with<T: bytemuck::Pod>(&mut self, data: &T) {
-        self.fill_from_source(bytemuck::bytes_of(data));
-    }
-
-    pub fn fill_from_source(&mut self, source: &[u8]) {
-        let sources = [source];
-        self.fill_from_sources(&sources);
+        self.fill_from_sources(slice::from_ref(&bytemuck::bytes_of(data)));
     }
 
     pub fn fill_from_sources(&mut self, data_sources: &[&[u8]]) {
@@ -118,10 +113,10 @@ impl Buffer {
         src: &Self,
         size: u64,
     ) {
-        let copy_info = [vk::BufferCopy::builder().size(size).build()];
+        let copy_info = vk::BufferCopy::builder().size(size);
 
         unsafe {
-            ctx.cmd_copy_buffer(command_buffer, **src, **self, &copy_info);
+            ctx.cmd_copy_buffer(command_buffer, **src, **self, slice::from_ref(&copy_info));
         }
     }
 
@@ -132,6 +127,13 @@ impl Buffer {
                 ..Default::default()
             })
         }
+    }
+
+    fn total_size_of_sources<T>(slices: &[&[T]]) -> u64 {
+        slices
+            .iter()
+            .map(|&slice| std::mem::size_of_val(slice) as u64)
+            .sum()
     }
 }
 

@@ -1,3 +1,5 @@
+use std::slice;
+
 use ash::vk;
 
 use crate::gpu::{
@@ -77,13 +79,11 @@ impl Swapchain {
         image_index: usize,
         wait_on: &[vk::Semaphore],
     ) -> bool {
-        let swapchains = [self.swapchain];
-        let image_indices = [image_index as u32];
-
+        let image_index = image_index as _;
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(wait_on)
-            .swapchains(&swapchains)
-            .image_indices(&image_indices);
+            .swapchains(slice::from_ref(&self.swapchain))
+            .image_indices(slice::from_ref(&image_index));
 
         unsafe {
             ctx.ext

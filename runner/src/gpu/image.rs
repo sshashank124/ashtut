@@ -1,4 +1,4 @@
-use std::ops::Deref;
+use std::{ops::Deref, slice};
 
 use ash::vk;
 
@@ -111,10 +111,7 @@ impl<const FORMAT: vk::Format> Image<FORMAT> {
             .dst_access_mask(access_transition[1])
             .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
             .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            .subresource_range(Self::subresource_range())
-            .build();
-
-        let image_barriers = [barrier];
+            .subresource_range(Self::subresource_range());
 
         unsafe {
             ctx.cmd_pipeline_barrier(
@@ -124,7 +121,7 @@ impl<const FORMAT: vk::Format> Image<FORMAT> {
                 vk::DependencyFlags::empty(),
                 &[],
                 &[],
-                &image_barriers,
+                slice::from_ref(&barrier),
             );
         }
     }
@@ -151,10 +148,14 @@ impl Image<{ format::COLOR }> {
         name: &str,
         img: &image::RgbaImage,
     ) -> Self {
-        let data_sources = [img.as_raw().as_slice()];
         let staging = {
             let info = vk::BufferCreateInfo::builder().usage(vk::BufferUsageFlags::TRANSFER_SRC);
-            Buffer::create_with_data(ctx, &format!("{name} [STAGING]"), *info, &data_sources)
+            Buffer::create_with_data(
+                ctx,
+                &format!("{name} [STAGING]"),
+                *info,
+                slice::from_ref(&img.as_raw().as_slice()),
+            )
         };
 
         let extent = vk::Extent3D {
@@ -216,15 +217,14 @@ impl Image<{ format::COLOR }> {
         src: &Buffer,
         extent: vk::Extent3D,
     ) {
-        let copy_info = [vk::BufferImageCopy::builder()
+        let copy_info = vk::BufferImageCopy::builder()
             .image_extent(extent)
             .image_subresource(vk::ImageSubresourceLayers {
                 aspect_mask: vk::ImageAspectFlags::COLOR,
                 mip_level: 0,
                 base_array_layer: 0,
                 layer_count: 1,
-            })
-            .build()];
+            });
 
         unsafe {
             ctx.cmd_copy_buffer_to_image(
@@ -232,7 +232,7 @@ impl Image<{ format::COLOR }> {
                 **src,
                 **self,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &copy_info,
+                slice::from_ref(&copy_info),
             );
         }
     }

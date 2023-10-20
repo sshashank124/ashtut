@@ -1,4 +1,4 @@
-use std::{ffi::CString, ops::RangeInclusive};
+use std::ffi::CString;
 
 pub fn bytes_to_string(string: *const std::ffi::c_char) -> String {
     unsafe { std::ffi::CStr::from_ptr(string) }
@@ -9,17 +9,6 @@ pub fn bytes_to_string(string: *const std::ffi::c_char) -> String {
 
 pub fn cstring(s: &str) -> CString {
     CString::new(s).expect("Input string should not contain NUL byte")
-}
-
-pub const fn solo_range(i: usize) -> RangeInclusive<usize> {
-    i..=i
-}
-
-pub fn total_size<T>(slices: &[&[T]]) -> usize {
-    slices
-        .iter()
-        .map(|&slice| std::mem::size_of_val(slice))
-        .sum()
 }
 
 pub const fn align_to(value: usize, alignment: usize) -> usize {

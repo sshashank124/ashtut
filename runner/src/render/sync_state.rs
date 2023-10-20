@@ -33,16 +33,16 @@ impl SyncState {
         }
     }
 
-    pub fn image_available_semaphore(&self) -> &[vk::Semaphore] {
-        &self.image_available[crate::util::solo_range(self.current_frame)]
+    pub fn image_available_semaphore(&self) -> vk::Semaphore {
+        self.image_available[self.current_frame]
     }
 
-    pub fn render_finished_semaphore(&self) -> &[vk::Semaphore] {
-        &self.render_finished[crate::util::solo_range(self.current_frame)]
+    pub fn render_finished_semaphore(&self) -> vk::Semaphore {
+        self.render_finished[self.current_frame]
     }
 
-    pub fn in_flight_fence(&self) -> &[vk::Fence] {
-        &self.in_flight[crate::util::solo_range(self.current_frame)]
+    pub fn in_flight_fence(&self) -> vk::Fence {
+        self.in_flight[self.current_frame]
     }
 
     pub fn advance(&mut self) {

@@ -7,7 +7,7 @@ use crate::gpu::{commands::Commands, context::Context, descriptors::Descriptors,
 use super::{context::queue::Queue, sync_info::SyncInfo};
 
 pub struct Pipeline {
-    descriptors: Descriptors,
+    pub descriptors: Descriptors,
     pub layout: vk::PipelineLayout,
     pipeline: vk::Pipeline,
     commands: Vec<Commands>,
@@ -43,14 +43,22 @@ impl Pipeline {
     pub fn submit_pipeline(&self, ctx: &Context, idx: usize, sync_info: &SyncInfo) {
         let submit_info = vk::SubmitInfo::builder()
             .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-            .wait_semaphores(sync_info.wait_on)
-            .signal_semaphores(sync_info.signal_to);
+            .wait_semaphores(
+                sync_info
+                    .wait_on
+                    .as_ref()
+                    .map(std::slice::from_ref)
+                    .unwrap_or_default(),
+            )
+            .signal_semaphores(
+                sync_info
+                    .signal_to
+                    .as_ref()
+                    .map(std::slice::from_ref)
+                    .unwrap_or_default(),
+            );
 
         self.commands[idx].submit(ctx, &submit_info, sync_info.fence);
-    }
-
-    pub fn descriptor_set(&self, idx: usize) -> &[vk::DescriptorSet] {
-        &self.descriptors.sets[crate::util::solo_range(idx)]
     }
 }
 
