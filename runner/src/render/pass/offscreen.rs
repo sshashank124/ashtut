@@ -1,23 +1,18 @@
-use std::{
-    ops::{Deref, DerefMut},
-    slice,
-};
+use std::slice;
 
 use ash::vk;
 use shared::Vertex;
 
 use crate::gpu::{
     context::Context,
-    descriptors::Descriptors,
     framebuffers::{self, Framebuffers},
-    image::{format, Image},
-    model::Model,
+    image::format,
     pipeline,
-    scope::OneshotScope,
     sync_info::SyncInfo,
-    uniforms::Uniforms,
     Descriptions, Destroy,
 };
+
+use super::common;
 
 pub mod conf {
     pub const SHADER_FILE: &str = env!("raster.spv");
@@ -27,61 +22,14 @@ pub mod conf {
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"frag_main\0") };
 }
 
-pub struct Data {
-    pub uniforms: Uniforms,
-    models: Vec<Model>,
-}
-
 pub struct Pipeline {
-    data: Data,
     pub render_pass: vk::RenderPass,
     pub target: Framebuffers<{ format::HDR }>,
-    pipeline: pipeline::Pipeline,
-}
-
-impl Data {
-    pub fn create(ctx: &mut Context) -> Self {
-        let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.graphics());
-        let uniforms = Uniforms::create(ctx);
-        let models = vec![Model::demo_viking_room(ctx, &mut init_scope)];
-        init_scope.finish(ctx);
-
-        Self { uniforms, models }
-    }
-
-    pub fn bind_to_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
-        let buffer_info = vk::DescriptorBufferInfo::builder()
-            .buffer(*self.uniforms.buffer)
-            .range(vk::WHOLE_SIZE);
-
-        let texture_info = vk::DescriptorImageInfo::builder()
-            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image_view(self.models[0].texture.image.view)
-            .sampler(*self.models[0].texture.sampler);
-
-        let writes = [
-            vk::WriteDescriptorSet::builder()
-                .dst_set(descriptors.sets[0])
-                .dst_binding(0)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(slice::from_ref(&buffer_info))
-                .build(),
-            vk::WriteDescriptorSet::builder()
-                .dst_set(descriptors.sets[0])
-                .dst_binding(1)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .image_info(slice::from_ref(&texture_info))
-                .build(),
-        ];
-
-        unsafe {
-            ctx.update_descriptor_sets(&writes, &[]);
-        }
-    }
+    pipeline: pipeline::Pipeline<1>,
 }
 
 impl Pipeline {
-    pub fn create(ctx: &mut Context, data: Data, target: &Image<{ format::HDR }>) -> Self {
+    pub fn create(ctx: &mut Context, common_data: &common::Data) -> Self {
         let render_pass = Self::create_render_pass(ctx);
 
         let target = Framebuffers::create(
@@ -89,18 +37,24 @@ impl Pipeline {
             "Render target",
             render_pass,
             super::super::conf::FRAME_RESOLUTION,
-            std::slice::from_ref(target),
+            std::slice::from_ref(&common_data.target),
         );
 
-        let descriptors = Self::create_descriptors(ctx);
-        data.bind_to_descriptors(ctx, &descriptors);
+        let (layout, pipeline) =
+            Self::create_pipeline(ctx, render_pass, common_data.descriptors.layout);
 
-        let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, descriptors.layout);
-        let pipeline =
-            pipeline::Pipeline::new(ctx, descriptors, layout, pipeline, ctx.queues.graphics(), 1);
+        let descriptor_sets = common_data.descriptors.sets.iter().copied().map(|a| [a]);
+
+        let pipeline = pipeline::Pipeline::new(
+            ctx,
+            descriptor_sets,
+            layout,
+            pipeline,
+            ctx.queues.graphics(),
+            1,
+        );
 
         Self {
-            data,
             render_pass,
             target,
             pipeline,
@@ -161,62 +115,6 @@ impl Pipeline {
             ctx.create_render_pass(&render_pass_info, None)
                 .expect("Failed to create render pass")
         }
-    }
-
-    fn create_descriptors(ctx: &Context) -> Descriptors {
-        let layout = {
-            let bindings = [
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(0)
-                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                    .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::VERTEX)
-                    .build(),
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(1)
-                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-                    .build(),
-            ];
-            let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
-            unsafe {
-                ctx.create_descriptor_set_layout(&info, None)
-                    .expect("Failed to create descriptor set layout")
-            }
-        };
-
-        let pool = {
-            let sizes = [
-                vk::DescriptorPoolSize::builder()
-                    .ty(vk::DescriptorType::UNIFORM_BUFFER)
-                    .descriptor_count(1)
-                    .build(),
-                vk::DescriptorPoolSize::builder()
-                    .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .descriptor_count(1)
-                    .build(),
-            ];
-            let info = vk::DescriptorPoolCreateInfo::builder()
-                .pool_sizes(&sizes)
-                .max_sets(1);
-            unsafe {
-                ctx.create_descriptor_pool(&info, None)
-                    .expect("Failed to create descriptor pool")
-            }
-        };
-
-        let sets = {
-            let info = vk::DescriptorSetAllocateInfo::builder()
-                .descriptor_pool(pool)
-                .set_layouts(slice::from_ref(&layout));
-            unsafe {
-                ctx.allocate_descriptor_sets(&info)
-                    .expect("Failed to allocate descriptor sets")
-            }
-        };
-
-        Descriptors { layout, pool, sets }
     }
 
     fn create_pipeline(
@@ -320,7 +218,7 @@ impl Pipeline {
         (layout, pipeline)
     }
 
-    pub fn run(&self, ctx: &Context, sync_info: &SyncInfo) {
+    pub fn run(&self, ctx: &Context, common_data: &common::Data, sync_info: &SyncInfo) {
         let commands = self.pipeline.begin_pipeline(ctx, 0);
 
         let render_pass_info = vk::RenderPassBeginInfo::builder()
@@ -348,27 +246,27 @@ impl Pipeline {
                 vk::PipelineBindPoint::GRAPHICS,
                 self.pipeline.layout,
                 0,
-                slice::from_ref(&self.pipeline.descriptors.sets[0]),
+                &self.pipeline.descriptor_sets[0],
                 &[],
             );
 
             ctx.cmd_bind_vertex_buffers(
                 commands.buffer,
                 0,
-                slice::from_ref(&self.models[0].vertex_index_buffer),
+                slice::from_ref(&common_data.models[0].vertex_index_buffer),
                 &[0],
             );
 
             ctx.cmd_bind_index_buffer(
                 commands.buffer,
-                *self.models[0].vertex_index_buffer,
-                self.models[0].mesh.indices_offset() as _,
+                *common_data.models[0].vertex_index_buffer,
+                common_data.models[0].mesh.indices_offset() as _,
                 vk::IndexType::UINT32,
             );
 
             ctx.cmd_draw_indexed(
                 commands.buffer,
-                self.models[0].mesh.indices.len() as _,
+                common_data.models[0].mesh.indices.len() as _,
                 1,
                 0,
                 0,
@@ -387,26 +285,5 @@ impl Destroy<Context> for Pipeline {
         self.target.destroy_with(ctx);
         self.pipeline.destroy_with(ctx);
         ctx.destroy_render_pass(self.render_pass, None);
-        self.data.destroy_with(ctx);
-    }
-}
-
-impl Destroy<Context> for Data {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        self.models.destroy_with(ctx);
-        self.uniforms.destroy_with(ctx);
-    }
-}
-
-impl Deref for Pipeline {
-    type Target = Data;
-    fn deref(&self) -> &Self::Target {
-        &self.data
-    }
-}
-
-impl DerefMut for Pipeline {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.data
     }
 }

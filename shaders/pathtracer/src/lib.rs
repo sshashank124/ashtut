@@ -1,31 +1,66 @@
 #![cfg_attr(target_arch = "spirv", no_std)]
 
+mod ray;
+
+#[cfg(target_arch = "spirv")]
+use shared::spirv_std::num_traits::Float;
+
 use shared::{
-    glam::{vec3, vec4, UVec3, Vec3, Vec3Swizzles},
-    spirv_std::{self, ray_tracing::AccelerationStructure, spirv, Image},
+    glam::{vec3, UVec3, Vec3Swizzles, Vec4, Vec4Swizzles},
+    spirv_std::{
+        self,
+        ray_tracing::{AccelerationStructure, RayFlags},
+        spirv, Image,
+    },
+    UniformObjects,
 };
 
-pub type TargetFormat = Image!(2D, format = rgba32f, sampled = false);
+use ray::Payload;
+
+pub type OutputImage = Image!(2D, format = rgba32f, sampled = false);
 
 #[spirv(ray_generation)]
 pub fn ray_generation(
+    #[spirv(uniform, descriptor_set = 0, binding = 0)] uniforms: &UniformObjects,
+    #[spirv(descriptor_set = 1, binding = 0)] tlas: &AccelerationStructure,
+    #[spirv(descriptor_set = 1, binding = 1)] output_image: &OutputImage,
+    #[spirv(ray_payload)] payload: &mut ray::Payload,
     #[spirv(launch_id)] launch_id: UVec3,
-    #[spirv(launch_size)] _launch_size: UVec3,
-    #[spirv(descriptor_set = 0, binding = 0)] _tlas: &AccelerationStructure,
-    #[spirv(descriptor_set = 0, binding = 1)] target: &TargetFormat,
+    #[spirv(launch_size)] launch_size: UVec3,
 ) {
-    unsafe { target.write(launch_id.xy(), vec4(0.5, 0.5, 0.5, 1.0)) };
+    let uv = (launch_id.as_vec3().xy() + 0.5) / launch_size.as_vec3().xy();
+
+    let origin = uniforms.view / Vec4::W;
+    let target = uniforms.proj / (uv * 2.0 - 1.0).extend(1.0).extend(1.0);
+    let direction = uniforms.view / target.xyz().normalize().extend(0.0);
+
+    let t_min = 0.001;
+    let t_max = 1000.0;
+
+    unsafe {
+        tlas.trace_ray(
+            RayFlags::OPAQUE,
+            0xff,
+            0,
+            0,
+            0,
+            origin.xyz(),
+            t_min,
+            direction.xyz(),
+            t_max,
+            payload,
+        );
+
+        output_image.write(launch_id.xy(), payload.hit_value.extend(1.0));
+    };
 }
 
 #[spirv(miss)]
-pub fn miss(#[spirv(incoming_ray_payload)] out: &mut Vec3) {
-    *out = vec3(0.0, 0.1, 0.3);
+pub fn miss(#[spirv(incoming_ray_payload)] out: &mut Payload) {
+    out.hit_value = vec3(0.2, 0.2, 0.8);
 }
 
 #[spirv(closest_hit)]
-pub fn closest_hit(
-    #[spirv(incoming_ray_payload)] out: &mut Vec3,
-    #[spirv(hit_attribute)] _attribs: &Vec3,
-) {
-    *out = vec3(0.2, 0.5, 0.5);
+pub fn closest_hit(#[spirv(incoming_ray_payload)] out: &mut Payload) {
+    out.hit_value = vec3(0.8, 0.2, 0.2);
 }

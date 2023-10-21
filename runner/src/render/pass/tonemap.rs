@@ -13,6 +13,8 @@ use crate::gpu::{
     Destroy,
 };
 
+use super::common;
+
 mod conf {
     pub const SHADER_FILE: &str = env!("tonemap.spv");
     pub const STAGE_VERTEX: &std::ffi::CStr =
@@ -22,6 +24,7 @@ mod conf {
 }
 
 pub struct Data {
+    descriptors: Descriptors,
     input_image: Image<{ format::HDR }>,
     sampler: Sampler,
 }
@@ -29,19 +32,69 @@ pub struct Data {
 pub struct Pipeline {
     data: Data,
     pub render_pass: vk::RenderPass,
-    pipeline: pipeline::Pipeline,
+    pipeline: pipeline::Pipeline<1>,
 }
 
 impl Data {
-    pub fn create(ctx: &Context, input_image: Image<{ format::HDR }>) -> Self {
-        Self {
+    pub fn create(ctx: &Context, common_data: &common::Data) -> Self {
+        let descriptors = Self::create_descriptors(ctx);
+
+        let input_image = Image::new(ctx, common_data.target.image, format::HDR, None);
+
+        let data = Self {
+            descriptors,
             input_image,
             sampler: Sampler::create(ctx),
-        }
+        };
+        data.bind_to_descriptor_sets(ctx);
+        data
     }
 
-    fn bind_to_descriptors(&self, ctx: &Context, descriptors: &Descriptors) {
-        for &set in &descriptors.sets {
+    fn create_descriptors(ctx: &Context) -> Descriptors {
+        let layout = {
+            let binding = vk::DescriptorSetLayoutBinding::builder()
+                .binding(0)
+                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_count(1)
+                .stage_flags(vk::ShaderStageFlags::FRAGMENT);
+            let info =
+                vk::DescriptorSetLayoutCreateInfo::builder().bindings(slice::from_ref(&binding));
+            unsafe {
+                ctx.create_descriptor_set_layout(&info, None)
+                    .expect("Failed to create descriptor set layout")
+            }
+        };
+
+        let pool = {
+            let num_frames = ctx.surface.config.image_count;
+            let size = vk::DescriptorPoolSize::builder()
+                .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                .descriptor_count(num_frames);
+            let info = vk::DescriptorPoolCreateInfo::builder()
+                .pool_sizes(slice::from_ref(&size))
+                .max_sets(num_frames);
+            unsafe {
+                ctx.create_descriptor_pool(&info, None)
+                    .expect("Failed to create descriptor pool")
+            }
+        };
+
+        let sets = {
+            let layouts = vec![layout; ctx.surface.config.image_count as usize];
+            let info = vk::DescriptorSetAllocateInfo::builder()
+                .descriptor_pool(pool)
+                .set_layouts(&layouts);
+            unsafe {
+                ctx.allocate_descriptor_sets(&info)
+                    .expect("Failed to allocate descriptor sets")
+            }
+        };
+
+        Descriptors { layout, pool, sets }
+    }
+
+    fn bind_to_descriptor_sets(&self, ctx: &Context) {
+        for &set in &self.descriptors.sets {
             let rendered_image_info = vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::GENERAL)
                 .image_view(self.input_image.view)
@@ -61,16 +114,17 @@ impl Data {
 }
 
 impl Pipeline {
-    pub fn create(ctx: &mut Context, data: Data) -> Self {
+    pub fn create(ctx: &mut Context, common_data: &common::Data) -> Self {
+        let data = Data::create(ctx, common_data);
+
         let render_pass = Self::create_render_pass(ctx);
+        let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, data.descriptors.layout);
 
-        let descriptors = Self::create_descriptors(ctx);
-        data.bind_to_descriptors(ctx, &descriptors);
+        let descriptor_sets = data.descriptors.sets.iter().copied().map(|a| [a]);
 
-        let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, descriptors.layout);
         let pipeline = pipeline::Pipeline::new(
             ctx,
-            descriptors,
+            descriptor_sets,
             layout,
             pipeline,
             ctx.queues.graphics(),
@@ -138,49 +192,6 @@ impl Pipeline {
             ctx.create_render_pass(&render_pass_info, None)
                 .expect("Failed to create render pass")
         }
-    }
-
-    fn create_descriptors(ctx: &Context) -> Descriptors {
-        let layout = {
-            let binding = vk::DescriptorSetLayoutBinding::builder()
-                .binding(0)
-                .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::FRAGMENT);
-            let info =
-                vk::DescriptorSetLayoutCreateInfo::builder().bindings(slice::from_ref(&binding));
-            unsafe {
-                ctx.create_descriptor_set_layout(&info, None)
-                    .expect("Failed to create descriptor set layout")
-            }
-        };
-
-        let pool = {
-            let num_frames = ctx.surface.config.image_count;
-            let size = vk::DescriptorPoolSize::builder()
-                .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                .descriptor_count(num_frames);
-            let info = vk::DescriptorPoolCreateInfo::builder()
-                .pool_sizes(slice::from_ref(&size))
-                .max_sets(num_frames);
-            unsafe {
-                ctx.create_descriptor_pool(&info, None)
-                    .expect("Failed to create descriptor pool")
-            }
-        };
-
-        let sets = {
-            let layouts = vec![layout; ctx.surface.config.image_count as usize];
-            let info = vk::DescriptorSetAllocateInfo::builder()
-                .descriptor_pool(pool)
-                .set_layouts(&layouts);
-            unsafe {
-                ctx.allocate_descriptor_sets(&info)
-                    .expect("Failed to allocate descriptor sets")
-            }
-        };
-
-        Descriptors { layout, pool, sets }
     }
 
     fn create_pipeline(
@@ -313,7 +324,7 @@ impl Pipeline {
                 vk::PipelineBindPoint::GRAPHICS,
                 self.pipeline.layout,
                 0,
-                slice::from_ref(&self.pipeline.descriptors.sets[idx]),
+                &self.pipeline.descriptor_sets[idx],
                 &[],
             );
 
@@ -347,6 +358,7 @@ impl Destroy<Context> for Data {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.input_image.destroy_with(ctx);
         self.sampler.destroy_with(ctx);
+        self.descriptors.destroy_with(ctx);
     }
 }
 

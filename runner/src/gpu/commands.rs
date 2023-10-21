@@ -20,9 +20,9 @@ impl<const MULTI_USE: bool> CommandsT<{ MULTI_USE }> {
     pub fn create_on_queue(ctx: &Context, queue: &Queue) -> Self {
         let pool = {
             let transient_flag = if MULTI_USE {
-                vk::CommandPoolCreateFlags::TRANSIENT
-            } else {
                 vk::CommandPoolCreateFlags::empty()
+            } else {
+                vk::CommandPoolCreateFlags::TRANSIENT
             };
             let info = vk::CommandPoolCreateInfo::builder()
                 .queue_family_index(queue.family_index)
@@ -50,12 +50,8 @@ impl<const MULTI_USE: bool> CommandsT<{ MULTI_USE }> {
     }
 
     pub fn begin_recording(&self, ctx: &Context) {
-        let one_time_submit_flag = if MULTI_USE {
-            vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT
-        } else {
-            vk::CommandBufferUsageFlags::empty()
-        };
-        let begin_info = vk::CommandBufferBeginInfo::builder().flags(one_time_submit_flag);
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
         unsafe {
             ctx.begin_command_buffer(self.buffer, &begin_info)

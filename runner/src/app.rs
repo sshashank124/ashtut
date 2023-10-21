@@ -24,7 +24,6 @@ pub struct App {
     uniforms: UniformObjects,
     needs_resizing: bool,
     start_time: Instant,
-    last_frame: Instant,
 }
 
 impl App {
@@ -33,20 +32,17 @@ impl App {
         let renderer = render::Renderer::create(&mut ctx);
 
         let uniforms = UniformObjects {
-            transforms: shared::ModelViewProjection::new(
-                glam::Mat4::default(),
-                glam::Mat4::look_at_rh(
-                    glam::vec3(0.0, -2.0, 2.0),
-                    glam::vec3(0.0, 0.0, 0.2),
-                    glam::vec3(0.0, 0.0, 1.0),
-                ),
-                glam::Mat4::perspective_rh(
-                    f32::to_radians(45.0),
-                    render::conf::ASPECT_RATIO,
-                    0.1,
-                    50.,
-                ),
-            ),
+            view: shared::Transform::new(glam::Mat4::look_at_rh(
+                glam::vec3(2.0, -2.0, 2.0),
+                glam::vec3(0.0, 0.0, 0.2),
+                glam::vec3(0.0, 0.0, 1.0),
+            )),
+            proj: shared::Transform::proj(glam::Mat4::perspective_rh(
+                f32::to_radians(45.0),
+                render::conf::ASPECT_RATIO,
+                0.1,
+                100.0,
+            )),
         };
 
         Self {
@@ -56,7 +52,6 @@ impl App {
             uniforms,
             needs_resizing: false,
             start_time: Instant::now(),
-            last_frame: Instant::now(),
         }
     }
 
@@ -75,7 +70,14 @@ impl App {
         let frac_millis = (self.start_time.elapsed().as_millis() % millis_for_1_rotation) as f32
             / millis_for_1_rotation as f32;
         let rotation_angle = frac_millis * 2.0 * std::f32::consts::PI;
-        self.uniforms.transforms.model = glam::Mat4::from_rotation_z(rotation_angle);
+        self.uniforms.view = shared::Transform::new(
+            glam::Mat4::from_rotation_z(rotation_angle)
+                * glam::Mat4::look_at_rh(
+                    glam::vec3(2.0, -2.0, 2.0),
+                    glam::vec3(0.0, 0.0, 0.2),
+                    glam::vec3(0.0, 0.0, 1.0),
+                ),
+        );
 
         if matches!(
             self.renderer.render(&self.ctx, &self.uniforms),
@@ -83,11 +85,6 @@ impl App {
         ) {
             self.needs_resizing = true;
         }
-
-        let now = Instant::now();
-        let fps = (now - self.last_frame).as_secs_f32().recip() as u32;
-        print!("FPS: {fps:6?}\r");
-        self.last_frame = now;
     }
 
     fn recreate(&mut self) -> bool {

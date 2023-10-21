@@ -19,8 +19,7 @@ pub fn vert_main(
     #[spirv(position, invariant)] position: &mut Vec4,
     tex_coord: &mut Vec2,
 ) {
-    let transforms = uniforms.transforms;
-    *position = transforms.proj * transforms.view * transforms.model * vertex.position.extend(1.0);
+    *position = uniforms.proj * (uniforms.view * vertex.position.extend(1.0));
     *tex_coord = vertex.tex_coord;
 }
 

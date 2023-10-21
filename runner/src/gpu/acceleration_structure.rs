@@ -14,6 +14,7 @@ pub struct AccelerationStructures {
 
 pub struct AccelerationStructure {
     accel: vk::AccelerationStructureKHR,
+    address: vk::DeviceAddress,
     buffer: Buffer,
 }
 
@@ -46,10 +47,8 @@ impl AccelerationStructures {
         assert!(!models.is_empty(), "Please provide at least 1 model");
 
         let mut scope = FlushableScope::begin_on(ctx, ctx.queues.compute());
-
         let blases = Self::build_blases(ctx, &mut scope, models);
         let tlas = Self::build_tlas(ctx, &mut scope, &blases);
-
         scope.finish(ctx);
 
         Self { blases, tlas }
@@ -60,7 +59,7 @@ impl AccelerationStructures {
         scope: &mut FlushableScope,
         blases: &[AccelerationStructure],
     ) -> AccelerationStructure {
-        let instances_info = InstancesInfo::for_instances(ctx, blases);
+        let instances_info = InstancesInfo::for_instances(ctx, scope, blases);
         let geometry_info = GeometryInfo::for_instances(ctx, &instances_info);
         let mut build_info = BuildInfo::for_geometry(ctx, false, &geometry_info);
         scope.add_resource(instances_info);
@@ -91,8 +90,12 @@ impl AccelerationStructures {
         let mut uncompacted = Vec::with_capacity(build_infos.len());
 
         for (idx, build_info) in build_infos.iter_mut().enumerate() {
-            let blas = AccelerationStructure::build(ctx, scope, build_info, Some(scratch_address));
-            uncompacted.push(blas);
+            uncompacted.push(AccelerationStructure::build(
+                ctx,
+                scope,
+                build_info,
+                Some(scratch_address),
+            ));
 
             unsafe {
                 ctx.cmd_pipeline_barrier(
@@ -155,6 +158,7 @@ impl AccelerationStructure {
             "Acceleration Structure - Buffer",
             vk::BufferCreateInfo {
                 usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                    | vk::BufferUsageFlags::STORAGE_BUFFER
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 size: build_info.sizes.acceleration_structure_size,
                 ..Default::default()
@@ -174,7 +178,19 @@ impl AccelerationStructure {
                 .expect("Failed to create acceleration structure")
         };
 
-        Self { accel, buffer }
+        let address = unsafe {
+            let info = vk::AccelerationStructureDeviceAddressInfoKHR::builder()
+                .acceleration_structure(accel);
+            ctx.ext
+                .accel
+                .get_acceleration_structure_device_address(&info)
+        };
+
+        Self {
+            accel,
+            address,
+            buffer,
+        }
     }
 
     fn build(
@@ -280,9 +296,9 @@ impl<'a> BuildInfo<'a> {
 }
 
 impl<'a> GeometryInfo<'a> {
-    fn new(geometry: vk::AccelerationStructureGeometryKHR, num_primities: u32) -> Self {
+    fn new(geometry: vk::AccelerationStructureGeometryKHR, num_primitives: u32) -> Self {
         let range = vk::AccelerationStructureBuildRangeInfoKHR::builder()
-            .primitive_count(num_primities)
+            .primitive_count(num_primitives)
             .build();
 
         Self {
@@ -341,10 +357,13 @@ impl<'a> GeometryInfo<'a> {
 }
 
 impl InstancesInfo {
-    fn for_instances(ctx: &mut Context, blases: &[AccelerationStructure]) -> Self {
+    fn for_instances(
+        ctx: &mut Context,
+        scope: &mut FlushableScope,
+        blases: &[AccelerationStructure],
+    ) -> Self {
         let instances = Instance::for_blases(blases);
 
-        // don't need memory barrier because synchronous copy
         let buffer = Buffer::create_with_data(
             ctx,
             "Acceleration Structure - Instances",
@@ -355,6 +374,22 @@ impl InstancesInfo {
             },
             slice::from_ref(&bytemuck::cast_slice(&instances)),
         );
+
+        unsafe {
+            ctx.cmd_pipeline_barrier(
+                scope.commands.buffer,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
+                vk::DependencyFlags::empty(),
+                slice::from_ref(
+                    &vk::MemoryBarrier::builder()
+                        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                        .dst_access_mask(vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR),
+                ),
+                &[],
+                &[],
+            );
+        }
 
         Self { instances, buffer }
     }
@@ -371,7 +406,7 @@ impl Instance {
                 ],
             }),
             acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
-                host_handle: blas.accel,
+                device_handle: blas.address,
             },
             instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xff),
             instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(

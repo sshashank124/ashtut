@@ -1,21 +1,14 @@
-pub mod pass;
+mod pass;
 mod sync_state;
 
 use std::slice;
 
-use ash::vk;
 use shared::UniformObjects;
 
-use crate::gpu::{
-    context::Context,
-    image::{format, Image},
-    swapchain::Swapchain,
-    sync_info::SyncInfo,
-    Destroy,
-};
+use crate::gpu::{context::Context, swapchain::Swapchain, sync_info::SyncInfo, Destroy};
 
 use self::{
-    pass::{offscreen, pathtracer, tonemap},
+    pass::{common, offscreen, pathtracer, tonemap},
     sync_state::SyncState,
 };
 
@@ -30,7 +23,7 @@ pub mod conf {
 
 pub struct Renderer {
     // offscreen pass
-    target: Image<{ format::HDR }>,
+    common_data: common::Data,
     pathtracer_pipeline: pathtracer::Pipeline,
     offscreen_pipeline: offscreen::Pipeline,
 
@@ -49,37 +42,17 @@ pub enum Error {
 
 impl Renderer {
     pub fn create(ctx: &mut Context) -> Self {
-        let target = {
-            let info = vk::ImageCreateInfo {
-                extent: conf::FRAME_RESOLUTION.into(),
-                usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::STORAGE,
-                ..Default::default()
-            };
-            Image::create(ctx, "Intermediate Target", &info)
-        };
+        let common_data = common::Data::create(ctx, conf::FRAME_RESOLUTION);
+        let pathtracer_pipeline = pathtracer::Pipeline::create(ctx, &common_data);
+        let offscreen_pipeline = offscreen::Pipeline::create(ctx, &common_data);
 
-        let pathtracer_pipeline = {
-            let data = pathtracer::Data::create(ctx, &target);
-            pathtracer::Pipeline::create(ctx, data)
-        };
-
-        let offscreen_pipeline = {
-            let data = offscreen::Data::create(ctx);
-            offscreen::Pipeline::create(ctx, data, &target)
-        };
-
-        let tonemap_pipeline = {
-            let input_image = Image::new(ctx, target.image, format::HDR, None);
-            let data = tonemap::Data::create(ctx, input_image);
-            tonemap::Pipeline::create(ctx, data)
-        };
-
+        let tonemap_pipeline = tonemap::Pipeline::create(ctx, &common_data);
         let swapchain = Swapchain::create(ctx, tonemap_pipeline.render_pass);
 
         let state = SyncState::create(ctx);
 
         Self {
-            target,
+            common_data,
             pathtracer_pipeline,
             offscreen_pipeline,
 
@@ -101,11 +74,14 @@ impl Renderer {
             .expect("Failed to wait for fence");
         }
 
+        self.common_data.uniforms.update(uniforms);
+
+        let sync_info = SyncInfo::default();
         if self.use_pathtracer {
-            self.pathtracer_pipeline.run(ctx, &SyncInfo::default());
+            self.pathtracer_pipeline.run(ctx, &sync_info);
         } else {
-            self.offscreen_pipeline.uniforms.update(uniforms);
-            self.offscreen_pipeline.run(ctx, &SyncInfo::default());
+            self.offscreen_pipeline
+                .run(ctx, &self.common_data, &sync_info);
         }
 
         let (image_index, needs_recreating) = self
@@ -161,6 +137,6 @@ impl Destroy<Context> for Renderer {
 
         self.offscreen_pipeline.destroy_with(ctx);
         self.pathtracer_pipeline.destroy_with(ctx);
-        self.target.destroy_with(ctx);
+        self.common_data.destroy_with(ctx);
     }
 }
