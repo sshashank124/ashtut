@@ -36,10 +36,10 @@ pub struct Pipeline {
 }
 
 impl Data {
-    pub fn create(ctx: &Context, common_data: &common::Data) -> Self {
+    pub fn create(ctx: &Context, scene_data: &common::SceneData) -> Self {
         let descriptors = Self::create_descriptors(ctx);
 
-        let input_image = Image::new(ctx, common_data.target.image, format::HDR, None);
+        let input_image = Image::new(ctx, scene_data.target.image, format::HDR, None);
 
         let data = Self {
             descriptors,
@@ -114,8 +114,8 @@ impl Data {
 }
 
 impl Pipeline {
-    pub fn create(ctx: &mut Context, common_data: &common::Data) -> Self {
-        let data = Data::create(ctx, common_data);
+    pub fn create(ctx: &mut Context, scene_data: &common::SceneData) -> Self {
+        let data = Data::create(ctx, scene_data);
 
         let render_pass = Self::create_render_pass(ctx);
         let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, data.descriptors.layout);

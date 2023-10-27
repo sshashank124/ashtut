@@ -41,6 +41,10 @@ impl Queues {
         &self.compute
     }
 
+    pub const fn transfer(&self) -> &Queue {
+        &self.graphics
+    }
+
     pub fn create_infos(indices: &Families) -> Vec<vk::DeviceQueueCreateInfo> {
         indices
             .unique()

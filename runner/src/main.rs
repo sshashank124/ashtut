@@ -9,8 +9,8 @@
 )]
 
 mod app;
+mod data;
 mod gpu;
-mod mesh;
 mod render;
 mod util;
 

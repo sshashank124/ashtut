@@ -7,9 +7,7 @@ use std::{
 use ash::vk;
 use winit::window::Window;
 
-use super::{
-    extensions, physical_device::PhysicalDevice, queue, surface, validator::Validator, Destroy,
-};
+use super::{debug::Debug, extensions, physical_device::PhysicalDevice, queue, surface, Destroy};
 
 mod conf {
     pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 0);
@@ -18,13 +16,13 @@ mod conf {
 pub struct Instance {
     pub entry: ash::Entry,
     instance: ash::Instance,
-    validator: Validator,
+    debug: Debug,
 }
 
 impl Instance {
     pub fn new(app_name: &str) -> Self {
         let entry = ash::Entry::linked();
-        Validator::check_validation_layer_support(&entry);
+        Debug::check_validation_layer_support(&entry);
 
         let app_name = CString::new(app_name).unwrap();
         let app_info = vk::ApplicationInfo::builder()
@@ -35,9 +33,9 @@ impl Instance {
             .application_info(&app_info)
             .enabled_extension_names(extensions::REQUIRED_FOR_INSTANCE);
 
-        let mut debug_info = Validator::debug_messenger_create_info();
+        let mut debug_info = Debug::debug_messenger_create_info();
         let instance_create_info =
-            Validator::add_validation_to_instance(instance_create_info, &mut debug_info);
+            Debug::add_validation_to_instance(instance_create_info, &mut debug_info);
 
         let instance = unsafe {
             entry
@@ -45,12 +43,12 @@ impl Instance {
                 .expect("Failed to create Vulkan instance")
         };
 
-        let validator = Validator::setup(&entry, &instance, debug_info);
+        let debug = Debug::setup(&entry, &instance, debug_info);
 
         Self {
             entry,
             instance,
-            validator,
+            debug,
         }
     }
 
@@ -121,7 +119,7 @@ impl Instance {
 
 impl Destroy<()> for Instance {
     unsafe fn destroy_with(&mut self, ctx: &mut ()) {
-        self.validator.destroy_with(ctx);
+        self.debug.destroy_with(ctx);
         self.instance.destroy_instance(None);
     }
 }

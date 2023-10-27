@@ -9,6 +9,7 @@ pub mod model;
 pub mod pipeline;
 pub mod query_pool;
 pub mod sampler;
+pub mod scene;
 pub mod scope;
 pub mod shader_binding_table;
 pub mod swapchain;

@@ -17,6 +17,14 @@ pub struct UniformObjects {
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
+pub struct PushConstants {
+    pub model_transform: Mat4,
+}
+unsafe impl bytemuck::Zeroable for PushConstants {}
+unsafe impl bytemuck::Pod for PushConstants {}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
 pub struct Vertex {
     pub position: Vec3,
     pub tex_coord: Vec2,
@@ -42,6 +50,13 @@ impl Vertex {
     }
 }
 
+type RawData = ([f32; 3], [f32; 2]);
+impl From<RawData> for Vertex {
+    fn from((position, tex_coord): RawData) -> Self {
+        Self::new(&position, &tex_coord)
+    }
+}
+
 impl Transform {
     pub fn new(mat: Mat4) -> Self {
         Self {
@@ -51,7 +66,7 @@ impl Transform {
     }
 
     pub fn proj(mut mat: Mat4) -> Self {
-        mat.y_axis.y *= -1.0;
+        mat.y_axis.y *= -1.;
         Self::new(mat)
     }
 }

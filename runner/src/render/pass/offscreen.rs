@@ -1,13 +1,14 @@
 use std::slice;
 
 use ash::vk;
-use shared::Vertex;
+use shared::{bytemuck, PushConstants, Vertex};
 
 use crate::gpu::{
     context::Context,
     framebuffers::{self, Framebuffers},
     image::format,
     pipeline,
+    scope::OneshotScope,
     sync_info::SyncInfo,
     Descriptions, Destroy,
 };
@@ -29,21 +30,25 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn create(ctx: &mut Context, common_data: &common::Data) -> Self {
+    pub fn create(
+        ctx: &mut Context,
+        scope: &mut OneshotScope,
+        scene_data: &common::SceneData,
+    ) -> Self {
         let render_pass = Self::create_render_pass(ctx);
 
         let target = Framebuffers::create(
             ctx,
+            scope,
             "Render target",
             render_pass,
             super::super::conf::FRAME_RESOLUTION,
-            std::slice::from_ref(&common_data.target),
+            std::slice::from_ref(&scene_data.target),
         );
 
-        let (layout, pipeline) =
-            Self::create_pipeline(ctx, render_pass, common_data.descriptors.layout);
+        let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, scene_data);
 
-        let descriptor_sets = common_data.descriptors.sets.iter().copied().map(|a| [a]);
+        let descriptor_sets = scene_data.descriptors.sets.iter().copied().map(|a| [a]);
 
         let pipeline = pipeline::Pipeline::new(
             ctx,
@@ -120,8 +125,23 @@ impl Pipeline {
     fn create_pipeline(
         ctx: &Context,
         render_pass: vk::RenderPass,
-        descriptor_set_layout: vk::DescriptorSetLayout,
+        scene_data: &common::SceneData,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
+        let push_constant_ranges = vk::PushConstantRange {
+            stage_flags: vk::ShaderStageFlags::VERTEX,
+            offset: 0,
+            size: std::mem::size_of::<PushConstants>() as _,
+        };
+
+        let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+            .set_layouts(slice::from_ref(&scene_data.descriptors.layout))
+            .push_constant_ranges(slice::from_ref(&push_constant_ranges));
+
+        let layout = unsafe {
+            ctx.create_pipeline_layout(&layout_create_info, None)
+                .expect("Failed to create pipeline layout")
+        };
+
         let shader_module = ctx.create_shader_module_from_file(conf::SHADER_FILE);
         let shader_stages = [
             vk::PipelineShaderStageCreateInfo::builder()
@@ -136,11 +156,12 @@ impl Pipeline {
                 .build(),
         ];
 
-        let vertex_bindings_description = Vertex::bindings_description();
-        let vertex_attributes_description = Vertex::attributes_description();
+        let vertex_binding_descriptions = Vertex::bindings_description();
+        let vertex_attribute_descriptions = Vertex::attributes_description();
+
         let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder()
-            .vertex_binding_descriptions(&vertex_bindings_description)
-            .vertex_attribute_descriptions(&vertex_attributes_description);
+            .vertex_binding_descriptions(&vertex_binding_descriptions)
+            .vertex_attribute_descriptions(&vertex_attribute_descriptions);
 
         let input_assembly_info = vk::PipelineInputAssemblyStateCreateInfo::builder()
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
@@ -159,7 +180,7 @@ impl Pipeline {
         let rasterization_info = vk::PipelineRasterizationStateCreateInfo::builder()
             .line_width(1.0)
             .front_face(vk::FrontFace::COUNTER_CLOCKWISE)
-            .cull_mode(vk::CullModeFlags::BACK);
+            .cull_mode(vk::CullModeFlags::NONE);
 
         let multisample_info = vk::PipelineMultisampleStateCreateInfo::builder()
             .rasterization_samples(vk::SampleCountFlags::TYPE_1);
@@ -183,14 +204,6 @@ impl Pipeline {
             .min_depth_bounds(0.0)
             .max_depth_bounds(1.0)
             .stencil_test_enable(false);
-
-        let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(slice::from_ref(&descriptor_set_layout));
-
-        let layout = unsafe {
-            ctx.create_pipeline_layout(&layout_create_info, None)
-                .expect("Failed to create pipeline layout")
-        };
 
         let create_info = vk::GraphicsPipelineCreateInfo::builder()
             .stages(&shader_stages)
@@ -218,7 +231,7 @@ impl Pipeline {
         (layout, pipeline)
     }
 
-    pub fn run(&self, ctx: &Context, common_data: &common::Data, sync_info: &SyncInfo) {
+    pub fn run(&self, ctx: &Context, scene_data: &common::SceneData, sync_info: &SyncInfo) {
         let commands = self.pipeline.begin_pipeline(ctx, 0);
 
         let render_pass_info = vk::RenderPassBeginInfo::builder()
@@ -241,40 +254,57 @@ impl Pipeline {
                 *self.pipeline,
             );
 
-            ctx.cmd_bind_descriptor_sets(
-                commands.buffer,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.layout,
-                0,
-                &self.pipeline.descriptor_sets[0],
-                &[],
-            );
-
             ctx.cmd_bind_vertex_buffers(
                 commands.buffer,
                 0,
-                slice::from_ref(&common_data.models[0].vertex_index_buffer),
+                slice::from_ref(&scene_data.geometry.buffer),
                 &[0],
             );
 
             ctx.cmd_bind_index_buffer(
                 commands.buffer,
-                *common_data.models[0].vertex_index_buffer,
-                common_data.models[0].mesh.indices_offset() as _,
+                *scene_data.geometry.buffer,
+                scene_data.geometry.indices_offset,
                 vk::IndexType::UINT32,
             );
-
-            ctx.cmd_draw_indexed(
-                commands.buffer,
-                common_data.models[0].mesh.indices.len() as _,
-                1,
-                0,
-                0,
-                0,
-            );
-
-            ctx.cmd_end_render_pass(commands.buffer);
         }
+
+        for instance in &scene_data.instances {
+            let primitive = &scene_data.primitives[instance.primitive_index];
+            unsafe {
+                let push_constants = PushConstants {
+                    model_transform: instance.transform,
+                };
+
+                ctx.cmd_push_constants(
+                    commands.buffer,
+                    self.pipeline.layout,
+                    vk::ShaderStageFlags::VERTEX,
+                    0,
+                    bytemuck::bytes_of(&push_constants),
+                );
+
+                ctx.cmd_bind_descriptor_sets(
+                    commands.buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
+                    self.pipeline.layout,
+                    0,
+                    &self.pipeline.descriptor_sets[0],
+                    &[],
+                );
+
+                ctx.cmd_draw_indexed(
+                    commands.buffer,
+                    primitive.indices.count() as _,
+                    1,
+                    primitive.indices.start as _,
+                    0,
+                    0,
+                );
+            }
+        }
+
+        unsafe { ctx.cmd_end_render_pass(commands.buffer) };
 
         self.pipeline.submit_pipeline(ctx, 0, sync_info);
     }

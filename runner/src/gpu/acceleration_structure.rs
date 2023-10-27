@@ -3,7 +3,14 @@ use std::{ops::Deref, slice};
 use ash::vk;
 use shared::{bytemuck, Vertex};
 
-use crate::gpu::{model::Model, query_pool::QueryPool, scope::FlushableScope};
+use crate::{
+    data,
+    gpu::{
+        query_pool::QueryPool,
+        scene::{Scene, VertexIndexBuffer},
+        scope::FlushableScope,
+    },
+};
 
 use super::{buffer::Buffer, context::Context, Descriptions, Destroy};
 
@@ -43,12 +50,19 @@ unsafe impl bytemuck::Zeroable for Instance {}
 unsafe impl bytemuck::Pod for Instance {}
 
 impl AccelerationStructures {
-    pub fn build(ctx: &mut Context, models: &[Model]) -> Self {
-        assert!(!models.is_empty(), "Please provide at least 1 model");
+    pub fn build(ctx: &mut Context, scene: &Scene) -> Self {
+        assert!(
+            !scene.primitives.is_empty(),
+            "Please provide at least 1 model"
+        );
+        assert!(
+            !scene.instances.is_empty(),
+            "Please specify at least 1 instance"
+        );
 
         let mut scope = FlushableScope::begin_on(ctx, ctx.queues.compute());
-        let blases = Self::build_blases(ctx, &mut scope, models);
-        let tlas = Self::build_tlas(ctx, &mut scope, &blases);
+        let blases = Self::build_blases(ctx, &mut scope, scene);
+        let tlas = Self::build_tlas(ctx, &mut scope, scene, &blases);
         scope.finish(ctx);
 
         Self { blases, tlas }
@@ -57,9 +71,10 @@ impl AccelerationStructures {
     fn build_tlas(
         ctx: &mut Context,
         scope: &mut FlushableScope,
+        scene: &Scene,
         blases: &[AccelerationStructure],
     ) -> AccelerationStructure {
-        let instances_info = InstancesInfo::for_instances(ctx, scope, blases);
+        let instances_info = InstancesInfo::for_instances(ctx, scope, &scene.instances, blases);
         let geometry_info = GeometryInfo::for_instances(ctx, &instances_info);
         let mut build_info = BuildInfo::for_geometry(ctx, false, &geometry_info);
         scope.add_resource(instances_info);
@@ -70,9 +85,9 @@ impl AccelerationStructures {
     pub fn build_blases(
         ctx: &mut Context,
         scope: &mut FlushableScope,
-        models: &[Model],
+        scene: &Scene,
     ) -> Vec<AccelerationStructure> {
-        let geometry_infos = GeometryInfo::for_models(ctx, models);
+        let geometry_infos = GeometryInfo::for_primitives(ctx, scene);
         let mut build_infos = BuildInfo::for_geometries(ctx, true, &geometry_infos);
 
         let max_scratch_size = build_infos
@@ -323,19 +338,23 @@ impl<'a> GeometryInfo<'a> {
         Self::new(geometry, instances_info.instances.len() as _)
     }
 
-    fn for_model(ctx: &Context, model: &'a Model) -> Self {
-        let (vertex_device_address, index_device_address) = model.buffer_device_addresses(ctx);
+    fn for_primitive(
+        ctx: &Context,
+        buffer: &'a VertexIndexBuffer,
+        primitive: &data::Primitive,
+    ) -> Self {
+        let (vertices_address, indices_address) = buffer.device_addresses(ctx);
         let triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
-            .vertex_format(vk::Format::R32G32B32A32_SFLOAT)
+            .vertex_format(vk::Format::R32G32B32_SFLOAT)
             .vertex_stride(Vertex::size() as _)
-            .max_vertex((model.mesh.vertices.len() - 1) as _)
+            .max_vertex((primitive.vertices.count() - 1) as _)
             .vertex_data(vk::DeviceOrHostAddressConstKHR {
-                device_address: vertex_device_address
+                device_address: vertices_address
                     + bytemuck::offset_of!(Vertex, position) as vk::DeviceAddress,
             })
             .index_type(vk::IndexType::UINT32)
             .index_data(vk::DeviceOrHostAddressConstKHR {
-                device_address: index_device_address,
+                device_address: indices_address,
             })
             .build();
 
@@ -345,13 +364,14 @@ impl<'a> GeometryInfo<'a> {
             .geometry(vk::AccelerationStructureGeometryDataKHR { triangles })
             .build();
 
-        Self::new(geometry, model.mesh.num_primitives() as _)
+        Self::new(geometry, primitive.count() as _)
     }
 
-    fn for_models(ctx: &Context, models: &'a [Model]) -> Vec<Self> {
-        models
+    fn for_primitives(ctx: &Context, scene: &'a Scene) -> Vec<Self> {
+        scene
+            .primitives
             .iter()
-            .map(|model| Self::for_model(ctx, model))
+            .map(|primitive| Self::for_primitive(ctx, &scene.geometry, primitive))
             .collect()
     }
 }
@@ -360,9 +380,10 @@ impl InstancesInfo {
     fn for_instances(
         ctx: &mut Context,
         scope: &mut FlushableScope,
+        instances: &[data::Instance],
         blases: &[AccelerationStructure],
     ) -> Self {
-        let instances = Instance::for_blases(blases);
+        let instances = Instance::for_instances(instances, blases);
 
         let buffer = Buffer::create_with_data(
             ctx,
@@ -396,17 +417,18 @@ impl InstancesInfo {
 }
 
 impl Instance {
-    fn for_blas(blas: &AccelerationStructure, transform: Option<vk::TransformMatrixKHR>) -> Self {
+    fn for_instance(instance: &data::Instance, blases: &[AccelerationStructure]) -> Self {
+        let t = &instance.transform;
         Self(vk::AccelerationStructureInstanceKHR {
-            transform: transform.unwrap_or(vk::TransformMatrixKHR {
+            transform: vk::TransformMatrixKHR {
                 matrix: [
-                    1.0, 0.0, 0.0, 0.0, // row 1
-                    0.0, 1.0, 0.0, 0.0, // row 2
-                    0.0, 0.0, 1.0, 0.0, // row 3
+                    t.x_axis.x, t.y_axis.x, t.z_axis.x, t.w_axis.x, // row 1
+                    t.x_axis.y, t.y_axis.y, t.z_axis.y, t.w_axis.y, // row 2
+                    t.x_axis.z, t.y_axis.z, t.z_axis.z, t.w_axis.z, // row 3
                 ],
-            }),
+            },
             acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
-                device_handle: blas.address,
+                device_handle: blases[instance.primitive_index].address,
             },
             instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xff),
             instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
@@ -416,10 +438,10 @@ impl Instance {
         })
     }
 
-    fn for_blases(blases: &[AccelerationStructure]) -> Vec<Self> {
-        blases
+    fn for_instances(instances: &[data::Instance], blases: &[AccelerationStructure]) -> Vec<Self> {
+        instances
             .iter()
-            .map(|blas| Self::for_blas(blas, None))
+            .map(|instance| Self::for_instance(instance, blases))
             .collect()
     }
 }

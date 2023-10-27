@@ -2,11 +2,8 @@
 
 mod ray;
 
-#[cfg(target_arch = "spirv")]
-use shared::spirv_std::num_traits::Float;
-
 use shared::{
-    glam::{vec3, UVec3, Vec3Swizzles, Vec4, Vec4Swizzles},
+    glam::{vec3, UVec3, Vec2, Vec3Swizzles, Vec4, Vec4Swizzles},
     spirv_std::{
         self,
         ray_tracing::{AccelerationStructure, RayFlags},
@@ -19,14 +16,22 @@ use ray::Payload;
 
 pub type OutputImage = Image!(2D, format = rgba32f, sampled = false);
 
+#[spirv(closest_hit)]
+pub fn closest_hit(
+    #[spirv(hit_attribute)] _hit_uv: &Vec2,
+    #[spirv(incoming_ray_payload)] out: &mut Payload,
+) {
+    out.hit_value = vec3(0.4, 0.1, 0.1);
+}
+
 #[spirv(ray_generation)]
 pub fn ray_generation(
+    #[spirv(launch_id)] launch_id: UVec3,
+    #[spirv(launch_size)] launch_size: UVec3,
     #[spirv(uniform, descriptor_set = 0, binding = 0)] uniforms: &UniformObjects,
     #[spirv(descriptor_set = 1, binding = 0)] tlas: &AccelerationStructure,
     #[spirv(descriptor_set = 1, binding = 1)] output_image: &OutputImage,
     #[spirv(ray_payload)] payload: &mut ray::Payload,
-    #[spirv(launch_id)] launch_id: UVec3,
-    #[spirv(launch_size)] launch_size: UVec3,
 ) {
     let uv = (launch_id.as_vec3().xy() + 0.5) / launch_size.as_vec3().xy();
 
@@ -57,10 +62,5 @@ pub fn ray_generation(
 
 #[spirv(miss)]
 pub fn miss(#[spirv(incoming_ray_payload)] out: &mut Payload) {
-    out.hit_value = vec3(0.2, 0.2, 0.8);
-}
-
-#[spirv(closest_hit)]
-pub fn closest_hit(#[spirv(incoming_ray_payload)] out: &mut Payload) {
-    out.hit_value = vec3(0.8, 0.2, 0.2);
+    out.hit_value = vec3(0.1, 0.1, 0.4);
 }

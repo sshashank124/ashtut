@@ -3,9 +3,14 @@ mod sync_state;
 
 use std::slice;
 
-use shared::UniformObjects;
+use shared::{glam, UniformObjects};
 
-use crate::gpu::{context::Context, swapchain::Swapchain, sync_info::SyncInfo, Destroy};
+use crate::{
+    data::{bounding_box::BoundingBox, gltf_scene::GltfScene},
+    gpu::{
+        context::Context, scope::OneshotScope, swapchain::Swapchain, sync_info::SyncInfo, Destroy,
+    },
+};
 
 use self::{
     pass::{common, offscreen, pathtracer, tonemap},
@@ -19,11 +24,12 @@ pub mod conf {
         height: HEIGHT,
         width: (HEIGHT as f32 * ASPECT_RATIO) as _,
     };
+    pub const PATHTRACER_TOGGLE_THRESHOLD: u32 = 1200;
 }
 
 pub struct Renderer {
     // offscreen pass
-    common_data: common::Data,
+    scene_data: common::SceneData,
     pathtracer_pipeline: pathtracer::Pipeline,
     offscreen_pipeline: offscreen::Pipeline,
 
@@ -32,6 +38,8 @@ pub struct Renderer {
     swapchain: Swapchain,
 
     // state
+    scene: GltfScene,
+    uniforms: UniformObjects,
     pub use_pathtracer: bool,
     state: SyncState,
 }
@@ -42,29 +50,53 @@ pub enum Error {
 
 impl Renderer {
     pub fn create(ctx: &mut Context) -> Self {
-        let common_data = common::Data::create(ctx, conf::FRAME_RESOLUTION);
-        let pathtracer_pipeline = pathtracer::Pipeline::create(ctx, &common_data);
-        let offscreen_pipeline = offscreen::Pipeline::create(ctx, &common_data);
+        // let scene = GltfScene::load("assets/Box/Box.gltf");
+        // let scene = GltfScene::load("assets/DamagedHelmet/DamagedHelmet.glb");
+        // let scene = GltfScene::load("assets/GearboxAssy/GearboxAssy.gltf");
+        // let scene = GltfScene::load("assets/Suzanne/Suzanne.gltf");
+        // let scene = GltfScene::load("assets/SimpleMeshes/SimpleMeshes.gltf");
+        let scene = GltfScene::load("assets/ABeautifulGame/ABeautifulGame.gltf");
 
-        let tonemap_pipeline = tonemap::Pipeline::create(ctx, &common_data);
-        let swapchain = Swapchain::create(ctx, tonemap_pipeline.render_pass);
+        let scene_data = common::SceneData::create(ctx, &scene, conf::FRAME_RESOLUTION);
+
+        let pathtracer_pipeline = pathtracer::Pipeline::create(ctx, &scene_data);
+
+        let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.transfer());
+
+        let offscreen_pipeline = offscreen::Pipeline::create(ctx, &mut init_scope, &scene_data);
+        let tonemap_pipeline = tonemap::Pipeline::create(ctx, &scene_data);
+        let swapchain = Swapchain::create(ctx, &mut init_scope, tonemap_pipeline.render_pass);
+
+        init_scope.finish(ctx);
+
+        let uniforms = UniformObjects {
+            view: Self::rotate_view_around(&scene.bounding_box, 0),
+            proj: shared::Transform::proj(glam::Mat4::perspective_rh(
+                f32::to_radians(45.0),
+                conf::ASPECT_RATIO,
+                0.1,
+                100.0,
+            )),
+        };
 
         let state = SyncState::create(ctx);
 
         Self {
-            common_data,
+            scene_data,
             pathtracer_pipeline,
             offscreen_pipeline,
 
             tonemap_pipeline,
             swapchain,
 
+            scene,
+            uniforms,
             use_pathtracer: false,
             state,
         }
     }
 
-    pub fn render(&mut self, ctx: &Context, uniforms: &UniformObjects) -> Result<(), Error> {
+    pub fn render(&mut self, ctx: &Context, elapsed_ms: u128) -> Result<(), Error> {
         unsafe {
             ctx.wait_for_fences(
                 slice::from_ref(&self.state.in_flight_fence()),
@@ -74,14 +106,17 @@ impl Renderer {
             .expect("Failed to wait for fence");
         }
 
-        self.common_data.uniforms.update(uniforms);
+        self.use_pathtracer = ctx.surface.config.extent.width < conf::PATHTRACER_TOGGLE_THRESHOLD;
+
+        self.uniforms.view = Self::rotate_view_around(&self.scene.bounding_box, elapsed_ms);
+        self.scene_data.uniforms.update(&self.uniforms);
 
         let sync_info = SyncInfo::default();
         if self.use_pathtracer {
             self.pathtracer_pipeline.run(ctx, &sync_info);
         } else {
             self.offscreen_pipeline
-                .run(ctx, &self.common_data, &sync_info);
+                .run(ctx, &self.scene_data, &sync_info);
         }
 
         let (image_index, needs_recreating) = self
@@ -120,11 +155,27 @@ impl Renderer {
             .ok_or(Error::NeedsRecreating)
     }
 
+    fn rotate_view_around(bounds: &BoundingBox, elapsed_ms: u128) -> shared::Transform {
+        let ms_per_rotation = 10000;
+        let frac_millis = (elapsed_ms % ms_per_rotation) as f32 / ms_per_rotation as f32;
+        let rotation = glam::Mat4::from_rotation_y(frac_millis * 2.0 * std::f32::consts::PI);
+        let camera_pos =
+            (rotation * (bounds.size() * 1.2).extend(1.0)).truncate() + bounds.center();
+
+        shared::Transform::new(glam::Mat4::look_at_rh(
+            camera_pos,
+            bounds.center(),
+            glam::Vec3::Y,
+        ))
+    }
+
     pub fn recreate(&mut self, ctx: &mut Context) {
         unsafe {
             self.swapchain.destroy_with(ctx);
         }
-        self.swapchain = Swapchain::create(ctx, self.tonemap_pipeline.render_pass);
+        let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.transfer());
+        self.swapchain = Swapchain::create(ctx, &mut init_scope, self.tonemap_pipeline.render_pass);
+        init_scope.finish(ctx);
     }
 }
 
@@ -137,6 +188,6 @@ impl Destroy<Context> for Renderer {
 
         self.offscreen_pipeline.destroy_with(ctx);
         self.pathtracer_pipeline.destroy_with(ctx);
-        self.common_data.destroy_with(ctx);
+        self.scene_data.destroy_with(ctx);
     }
 }

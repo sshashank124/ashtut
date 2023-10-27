@@ -3,6 +3,7 @@ use ash::vk;
 use super::{
     context::Context,
     image::{format, Image},
+    scope::OneshotScope,
     Destroy,
 };
 
@@ -28,6 +29,7 @@ pub struct Framebuffers<const FORMAT: vk::Format> {
 impl<const FORMAT: vk::Format> Framebuffers<{ FORMAT }> {
     pub fn create(
         ctx: &mut Context,
+        scope: &mut OneshotScope,
         name: &str,
         render_pass: vk::RenderPass,
         resolution: vk::Extent2D,
@@ -38,7 +40,7 @@ impl<const FORMAT: vk::Format> Framebuffers<{ FORMAT }> {
                 extent: resolution.into(),
                 ..Default::default()
             };
-            Image::create(ctx, &format!("{name} [DEPTH]"), &info)
+            Image::create(ctx, scope, &format!("{name} [DEPTH]"), &info, None)
         };
 
         let framebuffers = colors

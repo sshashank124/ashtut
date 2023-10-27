@@ -1,3 +1,4 @@
+mod debug;
 mod device;
 mod extensions;
 mod features;
@@ -6,7 +7,6 @@ mod physical_device;
 mod properties;
 pub mod queue;
 mod surface;
-mod validator;
 
 use std::ops::{Deref, DerefMut};
 

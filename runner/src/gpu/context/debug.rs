@@ -14,22 +14,22 @@ mod conf {
     };
 }
 
-pub struct Validator {
-    debug_utils_loader: ash::extensions::ext::DebugUtils,
+pub struct Debug {
+    debug_utils: ash::extensions::ext::DebugUtils,
     debug_messenger: vk::DebugUtilsMessengerEXT,
 }
 
-impl Validator {
+impl Debug {
     pub fn setup(
         entry: &ash::Entry,
         instance: &ash::Instance,
         debug_info: vk::DebugUtilsMessengerCreateInfoEXT,
     ) -> Self {
-        let debug_utils_loader = ash::extensions::ext::DebugUtils::new(entry, instance);
+        let debug_utils = ash::extensions::ext::DebugUtils::new(entry, instance);
 
         let debug_messenger = if conf::VALIDATE_LAYERS {
             unsafe {
-                debug_utils_loader
+                debug_utils
                     .create_debug_utils_messenger(&debug_info, None)
                     .expect("Failed to create debug utils messenger")
             }
@@ -38,7 +38,7 @@ impl Validator {
         };
 
         Self {
-            debug_utils_loader,
+            debug_utils,
             debug_messenger,
         }
     }
@@ -94,10 +94,10 @@ impl Validator {
     }
 }
 
-impl Destroy<()> for Validator {
+impl Destroy<()> for Debug {
     unsafe fn destroy_with(&mut self, _: &mut ()) {
         if conf::VALIDATE_LAYERS {
-            self.debug_utils_loader
+            self.debug_utils
                 .destroy_debug_utils_messenger(self.debug_messenger, None);
         }
     }

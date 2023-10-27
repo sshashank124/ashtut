@@ -17,6 +17,12 @@ pub struct Image<const FORMAT: vk::Format> {
     allocation: Option<alloc::Allocation>,
 }
 
+pub struct BarrierInfo {
+    layout: vk::ImageLayout,
+    stage: vk::PipelineStageFlags,
+    access: vk::AccessFlags,
+}
+
 impl<const FORMAT: vk::Format> Image<FORMAT> {
     pub fn new(
         ctx: &Context,
@@ -44,13 +50,19 @@ impl<const FORMAT: vk::Format> Image<FORMAT> {
         }
     }
 
-    pub fn create(ctx: &mut Context, name: &str, info: &vk::ImageCreateInfo) -> Self {
+    pub fn create(
+        ctx: &mut Context,
+        scope: &OneshotScope,
+        name: &str,
+        info: &vk::ImageCreateInfo,
+        to: Option<&BarrierInfo>,
+    ) -> Self {
         let image_info = vk::ImageCreateInfo {
             image_type: vk::ImageType::TYPE_2D,
             mip_levels: 1,
             array_layers: 1,
-            initial_layout: vk::ImageLayout::UNDEFINED,
             samples: vk::SampleCountFlags::TYPE_1,
+            initial_layout: vk::ImageLayout::UNDEFINED,
             tiling: vk::ImageTiling::OPTIMAL,
             format: FORMAT,
             usage: Self::usage_flags() | info.usage,
@@ -82,7 +94,13 @@ impl<const FORMAT: vk::Format> Image<FORMAT> {
                 .expect("Failed to bind memory");
         }
 
-        Self::new(ctx, image, FORMAT, Some(allocation))
+        let image = Self::new(ctx, image, FORMAT, Some(allocation));
+
+        if let Some(to) = to {
+            image.transition_layout(ctx, scope, &BarrierInfo::INIT, to);
+        }
+
+        image
     }
 
     const fn subresource_range() -> vk::ImageSubresourceRange {
@@ -98,26 +116,25 @@ impl<const FORMAT: vk::Format> Image<FORMAT> {
     fn transition_layout(
         &self,
         ctx: &Context,
-        command_buffer: vk::CommandBuffer,
-        layout_transition: [vk::ImageLayout; 2],
-        stage_transition: [vk::PipelineStageFlags; 2],
-        access_transition: [vk::AccessFlags; 2],
+        scope: &OneshotScope,
+        from: &BarrierInfo,
+        to: &BarrierInfo,
     ) {
         let barrier = vk::ImageMemoryBarrier::builder()
             .image(self.image)
-            .old_layout(layout_transition[0])
-            .new_layout(layout_transition[1])
-            .src_access_mask(access_transition[0])
-            .dst_access_mask(access_transition[1])
+            .old_layout(from.layout)
+            .new_layout(to.layout)
+            .src_access_mask(from.access)
+            .dst_access_mask(to.access)
             .src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
             .dst_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
             .subresource_range(Self::subresource_range());
 
         unsafe {
             ctx.cmd_pipeline_barrier(
-                command_buffer,
-                stage_transition[0],
-                stage_transition[1],
+                scope.commands.buffer,
+                from.stage,
+                to.stage,
                 vk::DependencyFlags::empty(),
                 &[],
                 &[],
@@ -167,42 +184,16 @@ impl Image<{ format::COLOR }> {
         let info = vk::ImageCreateInfo::builder()
             .extent(extent)
             .usage(vk::ImageUsageFlags::TRANSFER_DST);
-        let image = Self::create(ctx, name, &info);
-
-        // Transition to layout for copying data into image
-        image.transition_layout(
-            ctx,
-            scope.commands.buffer,
-            [
-                vk::ImageLayout::UNDEFINED,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            ],
-            [
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::TRANSFER,
-            ],
-            [vk::AccessFlags::empty(), vk::AccessFlags::TRANSFER_WRITE],
-        );
+        let image = Self::create(ctx, scope, name, &info, Some(&BarrierInfo::TRANSFER_DST));
 
         // Copy data to image
-        image.record_copy_from(ctx, scope.commands.buffer, &staging, extent);
+        image.record_copy_from(ctx, scope, &staging, extent);
 
-        // Transition to layout for reading from shader
         image.transition_layout(
             ctx,
-            scope.commands.buffer,
-            [
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-            ],
-            [
-                vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::FRAGMENT_SHADER,
-            ],
-            [
-                vk::AccessFlags::TRANSFER_WRITE,
-                vk::AccessFlags::SHADER_READ,
-            ],
+            scope,
+            &BarrierInfo::TRANSFER_DST,
+            &BarrierInfo::SHADER_READ,
         );
 
         scope.add_resource(staging);
@@ -213,7 +204,7 @@ impl Image<{ format::COLOR }> {
     pub fn record_copy_from(
         &self,
         ctx: &Context,
-        command_buffer: vk::CommandBuffer,
+        scope: &OneshotScope,
         src: &Buffer,
         extent: vk::Extent3D,
     ) {
@@ -228,7 +219,7 @@ impl Image<{ format::COLOR }> {
 
         unsafe {
             ctx.cmd_copy_buffer_to_image(
-                command_buffer,
+                scope.commands.buffer,
                 **src,
                 **self,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -236,6 +227,29 @@ impl Image<{ format::COLOR }> {
             );
         }
     }
+}
+
+impl BarrierInfo {
+    const INIT: Self = Self {
+        layout: vk::ImageLayout::UNDEFINED,
+        stage: vk::PipelineStageFlags::TOP_OF_PIPE,
+        access: vk::AccessFlags::empty(),
+    };
+    pub const GENERAL: Self = Self {
+        layout: vk::ImageLayout::GENERAL,
+        stage: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+        access: vk::AccessFlags::empty(),
+    };
+    pub const TRANSFER_DST: Self = Self {
+        layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        stage: vk::PipelineStageFlags::TRANSFER,
+        access: vk::AccessFlags::TRANSFER_WRITE,
+    };
+    pub const SHADER_READ: Self = Self {
+        layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        stage: vk::PipelineStageFlags::FRAGMENT_SHADER,
+        access: vk::AccessFlags::SHADER_READ,
+    };
 }
 
 impl<const FORMAT: vk::Format> Destroy<Context> for Image<FORMAT> {

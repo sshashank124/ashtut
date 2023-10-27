@@ -9,6 +9,8 @@ use crate::gpu::{
     Destroy,
 };
 
+use super::scope::OneshotScope;
+
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
     images: Vec<Image<{ format::SWAPCHAIN }>>,
@@ -16,7 +18,11 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn create(ctx: &mut Context, render_pass: vk::RenderPass) -> Self {
+    pub fn create(
+        ctx: &mut Context,
+        scope: &mut OneshotScope,
+        render_pass: vk::RenderPass,
+    ) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(**ctx.surface)
             .min_image_count(ctx.surface.config.image_count)
@@ -50,6 +56,7 @@ impl Swapchain {
 
         let target = Framebuffers::create(
             ctx,
+            scope,
             "Swapchain",
             render_pass,
             ctx.surface.config.extent,

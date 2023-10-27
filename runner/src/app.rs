@@ -1,6 +1,5 @@
 use std::time::Instant;
 
-use shared::{glam, UniformObjects};
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::EventLoop,
@@ -21,7 +20,6 @@ pub struct App {
     renderer: render::Renderer,
 
     // state
-    uniforms: UniformObjects,
     needs_resizing: bool,
     start_time: Instant,
 }
@@ -31,25 +29,10 @@ impl App {
         let mut ctx = Context::init(window);
         let renderer = render::Renderer::create(&mut ctx);
 
-        let uniforms = UniformObjects {
-            view: shared::Transform::new(glam::Mat4::look_at_rh(
-                glam::vec3(2.0, -2.0, 2.0),
-                glam::vec3(0.0, 0.0, 0.2),
-                glam::vec3(0.0, 0.0, 1.0),
-            )),
-            proj: shared::Transform::proj(glam::Mat4::perspective_rh(
-                f32::to_radians(45.0),
-                render::conf::ASPECT_RATIO,
-                0.1,
-                100.0,
-            )),
-        };
-
         Self {
             ctx,
             renderer,
 
-            uniforms,
             needs_resizing: false,
             start_time: Instant::now(),
         }
@@ -64,23 +47,9 @@ impl App {
             }
         }
 
-        self.renderer.use_pathtracer = self.ctx.surface.config.extent.width > 1200;
-
-        let millis_for_1_rotation = 3000;
-        let frac_millis = (self.start_time.elapsed().as_millis() % millis_for_1_rotation) as f32
-            / millis_for_1_rotation as f32;
-        let rotation_angle = frac_millis * 2.0 * std::f32::consts::PI;
-        self.uniforms.view = shared::Transform::new(
-            glam::Mat4::from_rotation_z(rotation_angle)
-                * glam::Mat4::look_at_rh(
-                    glam::vec3(2.0, -2.0, 2.0),
-                    glam::vec3(0.0, 0.0, 0.2),
-                    glam::vec3(0.0, 0.0, 1.0),
-                ),
-        );
-
         if matches!(
-            self.renderer.render(&self.ctx, &self.uniforms),
+            self.renderer
+                .render(&self.ctx, self.start_time.elapsed().as_millis()),
             Err(render::Error::NeedsRecreating)
         ) {
             self.needs_resizing = true;
