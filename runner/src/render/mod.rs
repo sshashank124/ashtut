@@ -13,7 +13,7 @@ use crate::{
 };
 
 use self::{
-    pass::{common, offscreen, pathtracer, tonemap},
+    pass::{common, pathtracer, rasterizer, tonemap},
     sync_state::SyncState,
 };
 
@@ -28,10 +28,10 @@ pub mod conf {
 }
 
 pub struct Renderer {
-    // offscreen pass
+    // render pass
     scene_data: common::SceneData,
     pathtracer_pipeline: pathtracer::Pipeline,
-    offscreen_pipeline: offscreen::Pipeline,
+    rasterizer_pipeline: rasterizer::Pipeline,
 
     // tonemap pass
     tonemap_pipeline: tonemap::Pipeline,
@@ -57,7 +57,7 @@ impl Renderer {
 
         let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.transfer());
 
-        let offscreen_pipeline = offscreen::Pipeline::create(ctx, &mut init_scope, &scene_data);
+        let rasterizer_pipeline = rasterizer::Pipeline::create(ctx, &mut init_scope, &scene_data);
         let tonemap_pipeline = tonemap::Pipeline::create(ctx, &scene_data);
         let swapchain = Swapchain::create(ctx, &mut init_scope, tonemap_pipeline.render_pass);
 
@@ -78,7 +78,7 @@ impl Renderer {
         Self {
             scene_data,
             pathtracer_pipeline,
-            offscreen_pipeline,
+            rasterizer_pipeline,
 
             tonemap_pipeline,
             swapchain,
@@ -109,7 +109,7 @@ impl Renderer {
         if self.use_pathtracer {
             self.pathtracer_pipeline.run(ctx, &sync_info);
         } else {
-            self.offscreen_pipeline
+            self.rasterizer_pipeline
                 .run(ctx, &self.scene_data, &sync_info);
         }
 
@@ -180,7 +180,7 @@ impl Destroy<Context> for Renderer {
         self.swapchain.destroy_with(ctx);
         self.tonemap_pipeline.destroy_with(ctx);
 
-        self.offscreen_pipeline.destroy_with(ctx);
+        self.rasterizer_pipeline.destroy_with(ctx);
         self.pathtracer_pipeline.destroy_with(ctx);
         self.scene_data.destroy_with(ctx);
     }

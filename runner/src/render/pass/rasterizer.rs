@@ -16,7 +16,7 @@ use crate::gpu::{
 use super::common;
 
 pub mod conf {
-    pub const SHADER_FILE: &str = env!("raster.spv");
+    pub const SHADER_FILE: &str = env!("rasterizer.spv");
     pub const STAGE_VERTEX: &std::ffi::CStr =
         unsafe { std::ffi::CStr::from_bytes_with_nul_unchecked(b"vert_main\0") };
     pub const STAGE_FRAGMENT: &std::ffi::CStr =
