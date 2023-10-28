@@ -53,11 +53,11 @@ impl Buffer {
         ctx: &mut Context,
         name: &str,
         mut info: vk::BufferCreateInfo,
-        data_sources: &[&[u8]],
+        data: &[u8],
     ) -> Self {
-        info.size = Self::total_size_of_sources(data_sources);
+        info.size = std::mem::size_of_val(data) as _;
         let mut buffer = Self::create(ctx, name, info, gpu_allocator::MemoryLocation::CpuToGpu);
-        buffer.fill_from_sources(data_sources);
+        buffer.fill_from(data);
         buffer
     }
 
@@ -66,7 +66,7 @@ impl Buffer {
         scope: &mut OneshotScope,
         name: &str,
         mut info: vk::BufferCreateInfo,
-        data_sources: &[&[u8]],
+        data: &[u8],
     ) -> Self {
         let staging = Self::create_with_data(
             ctx,
@@ -75,11 +75,11 @@ impl Buffer {
                 usage: vk::BufferUsageFlags::TRANSFER_SRC,
                 ..info
             },
-            data_sources,
+            data,
         );
 
         info.usage |= vk::BufferUsageFlags::TRANSFER_DST;
-        info.size = Self::total_size_of_sources(data_sources);
+        info.size = std::mem::size_of_val(data) as _;
         let mut buffer = Self::create(ctx, name, info, gpu_allocator::MemoryLocation::GpuOnly);
         buffer.record_copy_from(ctx, scope.commands.buffer, &staging, info.size);
 
@@ -89,20 +89,15 @@ impl Buffer {
     }
 
     pub fn fill_with<T: bytemuck::Pod>(&mut self, data: &T) {
-        self.fill_from_sources(slice::from_ref(&bytemuck::bytes_of(data)));
+        self.fill_from(bytemuck::bytes_of(data));
     }
 
-    pub fn fill_from_sources(&mut self, data_sources: &[&[u8]]) {
+    pub fn fill_from(&mut self, data: &[u8]) {
         if let Some(allocation) = &mut self.allocation {
-            let mut mapped_slice = allocation
+            allocation
                 .mapped_slice_mut()
-                .expect("Failed to get mapped slice");
-
-            for &data_source in data_sources {
-                let source_size = data_source.len();
-                mapped_slice[..source_size].copy_from_slice(data_source);
-                mapped_slice = &mut mapped_slice[source_size..];
-            }
+                .expect("Failed to get mapped slice")[..data.len()]
+                .copy_from_slice(data);
         }
     }
 
@@ -127,13 +122,6 @@ impl Buffer {
                 ..Default::default()
             })
         }
-    }
-
-    fn total_size_of_sources<T>(slices: &[&[T]]) -> u64 {
-        slices
-            .iter()
-            .map(|&slice| std::mem::size_of_val(slice) as u64)
-            .sum()
     }
 }
 

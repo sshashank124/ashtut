@@ -18,10 +18,10 @@ pub type OutputImage = Image!(2D, format = rgba32f, sampled = false);
 
 #[spirv(closest_hit)]
 pub fn closest_hit(
-    #[spirv(hit_attribute)] _hit_uv: &Vec2,
+    #[spirv(hit_attribute)] hit_uv: &Vec2,
     #[spirv(incoming_ray_payload)] out: &mut Payload,
 ) {
-    out.hit_value = vec3(0.4, 0.1, 0.1);
+    out.hit_value = hit_uv.extend(1.);
 }
 
 #[spirv(ray_generation)]

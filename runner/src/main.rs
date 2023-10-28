@@ -14,13 +14,17 @@ mod gpu;
 mod render;
 mod util;
 
+use std::env;
+
 use winit::event_loop::EventLoop;
 
 use app::App;
 
 fn main() {
+    let gltf_file = env::args().nth(1).expect("Please specify a gltf file");
+
     let event_loop = EventLoop::new();
     let window = App::init_window(&event_loop);
-    let app = App::new(&window);
+    let app = App::new(&window, &gltf_file);
     app.run(event_loop, window);
 }

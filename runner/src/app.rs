@@ -25,9 +25,9 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(window: &Window) -> Self {
+    pub fn new(window: &Window, gltf_file: &str) -> Self {
         let mut ctx = Context::init(window);
-        let renderer = render::Renderer::create(&mut ctx);
+        let renderer = render::Renderer::create(&mut ctx, gltf_file);
 
         Self {
             ctx,

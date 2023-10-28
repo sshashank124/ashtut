@@ -49,14 +49,8 @@ pub enum Error {
 }
 
 impl Renderer {
-    pub fn create(ctx: &mut Context) -> Self {
-        // let scene = GltfScene::load("assets/Box/Box.gltf");
-        // let scene = GltfScene::load("assets/DamagedHelmet/DamagedHelmet.glb");
-        // let scene = GltfScene::load("assets/GearboxAssy/GearboxAssy.gltf");
-        // let scene = GltfScene::load("assets/Suzanne/Suzanne.gltf");
-        // let scene = GltfScene::load("assets/SimpleMeshes/SimpleMeshes.gltf");
-        let scene = GltfScene::load("assets/ABeautifulGame/ABeautifulGame.gltf");
-
+    pub fn create(ctx: &mut Context, gltf_file: &str) -> Self {
+        let scene = GltfScene::load(gltf_file);
         let scene_data = common::SceneData::create(ctx, &scene, conf::FRAME_RESOLUTION);
 
         let pathtracer_pipeline = pathtracer::Pipeline::create(ctx, &scene_data);

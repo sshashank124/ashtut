@@ -5,11 +5,7 @@ use shared::{bytemuck, Vertex};
 
 use crate::{
     data,
-    gpu::{
-        query_pool::QueryPool,
-        scene::{Scene, VertexIndexBuffer},
-        scope::FlushableScope,
-    },
+    gpu::{query_pool::QueryPool, scene::Scene, scope::FlushableScope},
 };
 
 use super::{buffer::Buffer, context::Context, Descriptions, Destroy};
@@ -311,11 +307,10 @@ impl<'a> BuildInfo<'a> {
 }
 
 impl<'a> GeometryInfo<'a> {
-    fn new(geometry: vk::AccelerationStructureGeometryKHR, num_primitives: u32) -> Self {
-        let range = vk::AccelerationStructureBuildRangeInfoKHR::builder()
-            .primitive_count(num_primitives)
-            .build();
-
+    fn new(
+        geometry: vk::AccelerationStructureGeometryKHR,
+        range: vk::AccelerationStructureBuildRangeInfoKHR,
+    ) -> Self {
         Self {
             geometries: vec![geometry],
             ranges: vec![range],
@@ -335,26 +330,25 @@ impl<'a> GeometryInfo<'a> {
             })
             .build();
 
-        Self::new(geometry, instances_info.instances.len() as _)
+        let range = vk::AccelerationStructureBuildRangeInfoKHR::builder()
+            .primitive_count(instances_info.instances.len() as _)
+            .build();
+
+        Self::new(geometry, range)
     }
 
-    fn for_primitive(
-        ctx: &Context,
-        buffer: &'a VertexIndexBuffer,
-        primitive: &data::Primitive,
-    ) -> Self {
-        let (vertices_address, indices_address) = buffer.device_addresses(ctx);
+    fn for_primitive(ctx: &Context, scene: &'a Scene, primitive: &data::Primitive) -> Self {
         let triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
             .vertex_format(vk::Format::R32G32B32_SFLOAT)
             .vertex_stride(Vertex::size() as _)
             .max_vertex((primitive.vertices.count() - 1) as _)
             .vertex_data(vk::DeviceOrHostAddressConstKHR {
-                device_address: vertices_address
+                device_address: scene.vertices.get_device_address(ctx)
                     + bytemuck::offset_of!(Vertex, position) as vk::DeviceAddress,
             })
             .index_type(vk::IndexType::UINT32)
             .index_data(vk::DeviceOrHostAddressConstKHR {
-                device_address: indices_address,
+                device_address: scene.indices.get_device_address(ctx),
             })
             .build();
 
@@ -364,14 +358,20 @@ impl<'a> GeometryInfo<'a> {
             .geometry(vk::AccelerationStructureGeometryDataKHR { triangles })
             .build();
 
-        Self::new(geometry, primitive.count() as _)
+        let range = vk::AccelerationStructureBuildRangeInfoKHR::builder()
+            .primitive_count(primitive.count() as _)
+            .primitive_offset((primitive.indices.start * std::mem::size_of::<u32>()) as _)
+            .first_vertex(primitive.vertices.start as _)
+            .build();
+
+        Self::new(geometry, range)
     }
 
     fn for_primitives(ctx: &Context, scene: &'a Scene) -> Vec<Self> {
         scene
             .primitives
             .iter()
-            .map(|primitive| Self::for_primitive(ctx, &scene.geometry, primitive))
+            .map(|primitive| Self::for_primitive(ctx, scene, primitive))
             .collect()
     }
 }
@@ -393,7 +393,7 @@ impl InstancesInfo {
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                 ..Default::default()
             },
-            slice::from_ref(&bytemuck::cast_slice(&instances)),
+            bytemuck::cast_slice(&instances),
         );
 
         unsafe {

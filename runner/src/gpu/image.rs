@@ -167,12 +167,7 @@ impl Image<{ format::COLOR }> {
     ) -> Self {
         let staging = {
             let info = vk::BufferCreateInfo::builder().usage(vk::BufferUsageFlags::TRANSFER_SRC);
-            Buffer::create_with_data(
-                ctx,
-                &format!("{name} [STAGING]"),
-                *info,
-                slice::from_ref(&img.as_raw().as_slice()),
-            )
+            Buffer::create_with_data(ctx, &format!("{name} [STAGING]"), *info, img.as_raw())
         };
 
         let extent = vk::Extent3D {

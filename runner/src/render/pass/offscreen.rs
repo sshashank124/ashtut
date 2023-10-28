@@ -257,14 +257,14 @@ impl Pipeline {
             ctx.cmd_bind_vertex_buffers(
                 commands.buffer,
                 0,
-                slice::from_ref(&scene_data.geometry.buffer),
+                slice::from_ref(&scene_data.vertices),
                 &[0],
             );
 
             ctx.cmd_bind_index_buffer(
                 commands.buffer,
-                *scene_data.geometry.buffer,
-                scene_data.geometry.indices_offset,
+                *scene_data.indices,
+                0,
                 vk::IndexType::UINT32,
             );
         }
@@ -298,7 +298,7 @@ impl Pipeline {
                     primitive.indices.count() as _,
                     1,
                     primitive.indices.start as _,
-                    0,
+                    primitive.vertices.start.try_into().unwrap(),
                     0,
                 );
             }

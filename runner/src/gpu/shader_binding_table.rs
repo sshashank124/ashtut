@@ -1,4 +1,4 @@
-use std::{ffi::CString, slice};
+use std::ffi::CString;
 
 use ash::vk;
 
@@ -99,7 +99,7 @@ impl ShaderBindingTable {
                     | vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
                 ..Default::default()
             },
-            slice::from_ref(&table.as_slice()),
+            &table,
         );
 
         /* update region addresses */
