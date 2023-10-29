@@ -9,19 +9,19 @@ pub use spirv_std::glam;
 use glam::{Mat4, Vec2, Vec3};
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct UniformObjects {
-    pub view: Transform,
-    pub proj: Transform,
-}
-
-#[repr(C)]
 #[derive(Copy, Clone, Default)]
 pub struct PushConstants {
     pub model_transform: Mat4,
 }
 unsafe impl bytemuck::Zeroable for PushConstants {}
 unsafe impl bytemuck::Pod for PushConstants {}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct UniformObjects {
+    pub view: Transform,
+    pub proj: Transform,
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
@@ -40,6 +40,21 @@ pub struct Transform {
 }
 unsafe impl bytemuck::Zeroable for Transform {}
 unsafe impl bytemuck::Pod for Transform {}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct PrimitiveInfo {
+    pub indices_offset: u32,
+    pub vertices_offset: u32,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct SceneInfo {
+    pub indices_address: u64,
+    pub vertices_address: u64,
+    pub primitives_address: u64,
+}
 
 impl Vertex {
     pub const fn new(position: &[f32], tex_coord: &[f32]) -> Self {

@@ -36,13 +36,13 @@ pub struct Pipeline {
 }
 
 impl Data {
-    pub fn create(ctx: &mut Context, scene_data: &common::SceneData) -> Self {
+    pub fn create(ctx: &mut Context, common: &common::Data) -> Self {
         let descriptors = Self::create_descriptors(ctx);
 
-        let accel = AccelerationStructures::build(ctx, &scene_data.scene);
+        let accel = AccelerationStructures::build(ctx, &common.scene);
 
         let data = Self { descriptors, accel };
-        data.bind_to_descriptor_sets(ctx, scene_data);
+        data.bind_to_descriptor_sets(ctx, common);
         data
     }
 
@@ -102,13 +102,13 @@ impl Data {
         Descriptors { layout, pool, sets }
     }
 
-    fn bind_to_descriptor_sets(&self, ctx: &Context, scene_data: &common::SceneData) {
+    fn bind_to_descriptor_sets(&self, ctx: &Context, common: &common::Data) {
         let mut accel_info = vk::WriteDescriptorSetAccelerationStructureKHR::builder()
             .acceleration_structures(slice::from_ref(&self.accel.tlas));
 
         let target_info = vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::GENERAL)
-            .image_view(scene_data.target.view);
+            .image_view(common.target.view);
 
         for &set in &self.descriptors.sets {
             let mut accel_write = vk::WriteDescriptorSet::builder()
@@ -137,8 +137,8 @@ impl Data {
 }
 
 impl Pipeline {
-    pub fn create(ctx: &mut Context, scene_data: &common::SceneData) -> Self {
-        let data = Data::create(ctx, scene_data);
+    pub fn create(ctx: &mut Context, common: &common::Data) -> Self {
+        let data = Data::create(ctx, common);
 
         let ray_tracing_shaders = RayTracingShaders::new(
             ctx,
@@ -150,13 +150,13 @@ impl Pipeline {
 
         let (layout, pipeline) = Self::create_pipeline(
             ctx,
-            &[scene_data.descriptors.layout, data.descriptors.layout],
+            &[common.descriptors.layout, data.descriptors.layout],
             &ray_tracing_shaders,
         );
 
         let shader_binding_table = ShaderBindingTable::create(ctx, ray_tracing_shaders, pipeline);
 
-        let descriptor_sets = scene_data
+        let descriptor_sets = common
             .descriptors
             .sets
             .iter()

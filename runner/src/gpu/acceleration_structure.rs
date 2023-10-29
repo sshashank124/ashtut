@@ -1,11 +1,12 @@
 use std::{ops::Deref, slice};
 
 use ash::vk;
-use shared::{bytemuck, Vertex};
+use shared::{self, bytemuck};
 
 use crate::{
-    data,
+    data::gltf_scene,
     gpu::{query_pool::QueryPool, scene::Scene, scope::FlushableScope},
+    util,
 };
 
 use super::{buffer::Buffer, context::Context, Descriptions, Destroy};
@@ -21,6 +22,7 @@ pub struct AccelerationStructure {
     buffer: Buffer,
 }
 
+#[derive(Debug)]
 struct BuildInfo<'a> {
     geometry: vk::AccelerationStructureBuildGeometryInfoKHR,
     sizes: vk::AccelerationStructureBuildSizesInfoKHR,
@@ -47,15 +49,6 @@ unsafe impl bytemuck::Pod for Instance {}
 
 impl AccelerationStructures {
     pub fn build(ctx: &mut Context, scene: &Scene) -> Self {
-        assert!(
-            !scene.primitives.is_empty(),
-            "Please provide at least 1 model"
-        );
-        assert!(
-            !scene.instances.is_empty(),
-            "Please specify at least 1 instance"
-        );
-
         let mut scope = FlushableScope::begin_on(ctx, ctx.queues.compute());
         let blases = Self::build_blases(ctx, &mut scope, scene);
         let tlas = Self::build_tlas(ctx, &mut scope, scene, &blases);
@@ -70,7 +63,8 @@ impl AccelerationStructures {
         scene: &Scene,
         blases: &[AccelerationStructure],
     ) -> AccelerationStructure {
-        let instances_info = InstancesInfo::for_instances(ctx, scope, &scene.instances, blases);
+        let instances_info =
+            InstancesInfo::for_instances(ctx, scope, &scene.host_desc.instances, blases);
         let geometry_info = GeometryInfo::for_instances(ctx, &instances_info);
         let mut build_info = BuildInfo::for_geometry(ctx, false, &geometry_info);
         scope.add_resource(instances_info);
@@ -83,7 +77,7 @@ impl AccelerationStructures {
         scope: &mut FlushableScope,
         scene: &Scene,
     ) -> Vec<AccelerationStructure> {
-        let geometry_infos = GeometryInfo::for_primitives(ctx, scene);
+        let geometry_infos = GeometryInfo::for_primitives(scene);
         let mut build_infos = BuildInfo::for_geometries(ctx, true, &geometry_infos);
 
         let max_scratch_size = build_infos
@@ -233,18 +227,25 @@ impl AccelerationStructure {
         scope: &mut FlushableScope,
         size: vk::DeviceSize,
     ) -> vk::DeviceAddress {
+        let min_alignment = ctx
+            .physical_device
+            .properties
+            .acceleration_structure
+            .min_acceleration_structure_scratch_offset_alignment as _;
+
         let scratch = Buffer::create(
             ctx,
             "Acceleration Structure - Build Scratch",
             vk::BufferCreateInfo {
                 usage: vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                     | vk::BufferUsageFlags::STORAGE_BUFFER,
-                size,
+                size: util::align_to(size as _, min_alignment) as _,
                 ..Default::default()
             },
             gpu_allocator::MemoryLocation::GpuOnly,
         );
-        let address = scratch.get_device_address(ctx);
+        let address = util::align_to(scratch.get_device_address(ctx) as _, min_alignment) as _;
+
         scope.add_resource(scratch);
         address
     }
@@ -337,18 +338,22 @@ impl<'a> GeometryInfo<'a> {
         Self::new(geometry, range)
     }
 
-    fn for_primitive(ctx: &Context, scene: &'a Scene, primitive: &data::Primitive) -> Self {
+    fn for_primitive(
+        scene_info: &'a shared::SceneInfo,
+        primitive_info: &shared::PrimitiveInfo,
+        primitive_size: &gltf_scene::PrimitiveSize,
+    ) -> Self {
         let triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
             .vertex_format(vk::Format::R32G32B32_SFLOAT)
-            .vertex_stride(Vertex::size() as _)
-            .max_vertex((primitive.vertices.count() - 1) as _)
+            .vertex_stride(shared::Vertex::size() as _)
+            .max_vertex(primitive_size.vertices_size - 1)
             .vertex_data(vk::DeviceOrHostAddressConstKHR {
-                device_address: scene.vertices.get_device_address(ctx)
-                    + bytemuck::offset_of!(Vertex, position) as vk::DeviceAddress,
+                device_address: scene_info.vertices_address
+                    + bytemuck::offset_of!(shared::Vertex, position) as vk::DeviceAddress,
             })
             .index_type(vk::IndexType::UINT32)
             .index_data(vk::DeviceOrHostAddressConstKHR {
-                device_address: scene.indices.get_device_address(ctx),
+                device_address: scene_info.indices_address,
             })
             .build();
 
@@ -359,19 +364,23 @@ impl<'a> GeometryInfo<'a> {
             .build();
 
         let range = vk::AccelerationStructureBuildRangeInfoKHR::builder()
-            .primitive_count(primitive.count() as _)
-            .primitive_offset((primitive.indices.start * std::mem::size_of::<u32>()) as _)
-            .first_vertex(primitive.vertices.start as _)
+            .primitive_count(primitive_size.count())
+            .primitive_offset(primitive_info.indices_offset * std::mem::size_of::<u32>() as u32)
+            .first_vertex(primitive_info.vertices_offset)
             .build();
 
         Self::new(geometry, range)
     }
 
-    fn for_primitives(ctx: &Context, scene: &'a Scene) -> Vec<Self> {
+    fn for_primitives(scene: &'a Scene) -> Vec<Self> {
         scene
-            .primitives
+            .host_desc
+            .primitive_infos
             .iter()
-            .map(|primitive| Self::for_primitive(ctx, scene, primitive))
+            .zip(scene.host_desc.primitive_sizes.iter())
+            .map(|(primitive_info, primitive_size)| {
+                Self::for_primitive(&scene.device_desc, primitive_info, primitive_size)
+            })
             .collect()
     }
 }
@@ -380,7 +389,7 @@ impl InstancesInfo {
     fn for_instances(
         ctx: &mut Context,
         scope: &mut FlushableScope,
-        instances: &[data::Instance],
+        instances: &[gltf_scene::Instance],
         blases: &[AccelerationStructure],
     ) -> Self {
         let instances = Instance::for_instances(instances, blases);
@@ -417,7 +426,7 @@ impl InstancesInfo {
 }
 
 impl Instance {
-    fn for_instance(instance: &data::Instance, blases: &[AccelerationStructure]) -> Self {
+    fn for_instance(instance: &gltf_scene::Instance, blases: &[AccelerationStructure]) -> Self {
         let t = &instance.transform;
         Self(vk::AccelerationStructureInstanceKHR {
             transform: vk::TransformMatrixKHR {
@@ -438,7 +447,10 @@ impl Instance {
         })
     }
 
-    fn for_instances(instances: &[data::Instance], blases: &[AccelerationStructure]) -> Vec<Self> {
+    fn for_instances(
+        instances: &[gltf_scene::Instance],
+        blases: &[AccelerationStructure],
+    ) -> Vec<Self> {
         instances
             .iter()
             .map(|instance| Self::for_instance(instance, blases))

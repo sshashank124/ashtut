@@ -1,4 +1,4 @@
-use std::{ops::Deref, slice};
+use std::slice;
 
 use ash::vk;
 
@@ -15,17 +15,17 @@ use crate::{
     },
 };
 
-pub struct SceneData {
+pub struct Data {
     pub descriptors: Descriptors,
     pub target: Image<{ format::HDR }>,
     pub uniforms: Uniforms,
     pub scene: Scene,
 }
 
-impl SceneData {
+impl Data {
     pub fn create(
         ctx: &mut Context,
-        scene: &gltf_scene::GltfScene,
+        scene: gltf_scene::GltfScene,
         resolution: vk::Extent2D,
     ) -> Self {
         let descriptors = Self::create_descriptors(ctx);
@@ -47,7 +47,7 @@ impl SceneData {
             )
         };
 
-        let scene = Scene::load_gltf(ctx, &mut init_scope, scene);
+        let scene = Scene::create(ctx, &mut init_scope, scene);
 
         let uniforms = Uniforms::create(ctx);
 
@@ -123,18 +123,11 @@ impl SceneData {
     }
 }
 
-impl Destroy<Context> for SceneData {
+impl Destroy<Context> for Data {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.scene.destroy_with(ctx);
         self.uniforms.destroy_with(ctx);
         self.target.destroy_with(ctx);
         self.descriptors.destroy_with(ctx);
-    }
-}
-
-impl Deref for SceneData {
-    type Target = Scene;
-    fn deref(&self) -> &Self::Target {
-        &self.scene
     }
 }

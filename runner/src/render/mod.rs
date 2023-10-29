@@ -29,7 +29,7 @@ pub mod conf {
 
 pub struct Renderer {
     // render pass
-    scene_data: common::SceneData,
+    common: common::Data,
     pathtracer_pipeline: pathtracer::Pipeline,
     rasterizer_pipeline: rasterizer::Pipeline,
 
@@ -38,7 +38,6 @@ pub struct Renderer {
     swapchain: Swapchain,
 
     // state
-    scene: GltfScene,
     uniforms: UniformObjects,
     pub use_pathtracer: bool,
     state: SyncState,
@@ -51,20 +50,20 @@ pub enum Error {
 impl Renderer {
     pub fn create(ctx: &mut Context, gltf_file: &str) -> Self {
         let scene = GltfScene::load(gltf_file);
-        let scene_data = common::SceneData::create(ctx, &scene, conf::FRAME_RESOLUTION);
+        let common = common::Data::create(ctx, scene, conf::FRAME_RESOLUTION);
 
-        let pathtracer_pipeline = pathtracer::Pipeline::create(ctx, &scene_data);
+        let pathtracer_pipeline = pathtracer::Pipeline::create(ctx, &common);
 
         let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.transfer());
 
-        let rasterizer_pipeline = rasterizer::Pipeline::create(ctx, &mut init_scope, &scene_data);
-        let tonemap_pipeline = tonemap::Pipeline::create(ctx, &scene_data);
+        let rasterizer_pipeline = rasterizer::Pipeline::create(ctx, &mut init_scope, &common);
+        let tonemap_pipeline = tonemap::Pipeline::create(ctx, &common);
         let swapchain = Swapchain::create(ctx, &mut init_scope, tonemap_pipeline.render_pass);
 
         init_scope.finish(ctx);
 
         let uniforms = UniformObjects {
-            view: Self::rotate_view_around(&scene.bounding_box, 0),
+            view: Self::rotate_view_around(&common.scene.host_desc.bounding_box, 0),
             proj: shared::Transform::proj(glam::Mat4::perspective_rh(
                 f32::to_radians(45.0),
                 conf::ASPECT_RATIO,
@@ -76,14 +75,13 @@ impl Renderer {
         let state = SyncState::create(ctx);
 
         Self {
-            scene_data,
+            common,
             pathtracer_pipeline,
             rasterizer_pipeline,
 
             tonemap_pipeline,
             swapchain,
 
-            scene,
             uniforms,
             use_pathtracer: false,
             state,
@@ -102,15 +100,15 @@ impl Renderer {
 
         self.use_pathtracer = ctx.surface.config.extent.width < conf::PATHTRACER_TOGGLE_THRESHOLD;
 
-        self.uniforms.view = Self::rotate_view_around(&self.scene.bounding_box, elapsed_ms);
-        self.scene_data.uniforms.update(&self.uniforms);
+        self.uniforms.view =
+            Self::rotate_view_around(&self.common.scene.host_desc.bounding_box, elapsed_ms);
+        self.common.uniforms.update(&self.uniforms);
 
         let sync_info = SyncInfo::default();
         if self.use_pathtracer {
             self.pathtracer_pipeline.run(ctx, &sync_info);
         } else {
-            self.rasterizer_pipeline
-                .run(ctx, &self.scene_data, &sync_info);
+            self.rasterizer_pipeline.run(ctx, &self.common, &sync_info);
         }
 
         let (image_index, needs_recreating) = self
@@ -182,6 +180,6 @@ impl Destroy<Context> for Renderer {
 
         self.rasterizer_pipeline.destroy_with(ctx);
         self.pathtracer_pipeline.destroy_with(ctx);
-        self.scene_data.destroy_with(ctx);
+        self.common.destroy_with(ctx);
     }
 }
