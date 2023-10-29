@@ -9,7 +9,7 @@ use shared::{
         ray_tracing::{AccelerationStructure, RayFlags},
         spirv, Image,
     },
-    UniformObjects,
+    PrimitiveInfo, UniformObjects, Vertex,
 };
 
 use ray::Payload;
@@ -18,10 +18,38 @@ pub type OutputImage = Image!(2D, format = rgba32f, sampled = false);
 
 #[spirv(closest_hit)]
 pub fn closest_hit(
+    #[spirv(primitive_id)] primitive_id: usize,
+    #[spirv(instance_custom_index)] primitive_index: usize,
     #[spirv(hit_attribute)] hit_uv: &Vec2,
+    #[spirv(storage_buffer, descriptor_set = 1, binding = 2)] indices: &[u32],
+    #[spirv(storage_buffer, descriptor_set = 1, binding = 3)] vertices: &[Vertex],
+    #[spirv(storage_buffer, descriptor_set = 1, binding = 4)] primitives: &[PrimitiveInfo],
     #[spirv(incoming_ray_payload)] out: &mut Payload,
 ) {
-    out.hit_value = hit_uv.extend(1.);
+    let bary = vec3(1.0 - hit_uv.x - hit_uv.y, hit_uv.x, hit_uv.y);
+
+    let primitive = primitives[primitive_index];
+    let indices_offset = primitive.indices_offset as usize + (3 * primitive_id);
+    let vertices_offset = primitive.vertices_offset as usize;
+    let indices = [
+        indices[indices_offset] as usize + vertices_offset,
+        indices[indices_offset + 1] as usize + vertices_offset,
+        indices[indices_offset + 2] as usize + vertices_offset,
+    ];
+    let vertices = [
+        vertices[indices[0]],
+        vertices[indices[1]],
+        vertices[indices[2]],
+    ];
+    let tex_coords = [
+        vertices[0].tex_coord,
+        vertices[1].tex_coord,
+        vertices[2].tex_coord,
+    ];
+
+    let tex_coord = bary.x * tex_coords[0] + bary.y * tex_coords[1] + bary.z * tex_coords[2];
+
+    out.hit_value = tex_coord.extend(1.);
 }
 
 #[spirv(ray_generation)]
@@ -62,5 +90,5 @@ pub fn ray_generation(
 
 #[spirv(miss)]
 pub fn miss(#[spirv(incoming_ray_payload)] out: &mut Payload) {
-    out.hit_value = vec3(0.1, 0.1, 0.4);
+    out.hit_value = vec3(0.01, 0.01, 0.2);
 }

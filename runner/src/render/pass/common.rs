@@ -65,13 +65,13 @@ impl Data {
 
     pub fn create_descriptors(ctx: &Context) -> Descriptors {
         let layout = {
-            let bindings = vk::DescriptorSetLayoutBinding::builder()
+            let bindings = [vk::DescriptorSetLayoutBinding::builder()
                 .binding(0)
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                 .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::RAYGEN_KHR);
-            let info =
-                vk::DescriptorSetLayoutCreateInfo::builder().bindings(slice::from_ref(&bindings));
+                .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::RAYGEN_KHR)
+                .build()];
+            let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
             unsafe {
                 ctx.create_descriptor_set_layout(&info, None)
                     .expect("Failed to create descriptor set layout")
@@ -79,11 +79,12 @@ impl Data {
         };
 
         let pool = {
-            let sizes = vk::DescriptorPoolSize::builder()
+            let sizes = [vk::DescriptorPoolSize::builder()
                 .ty(vk::DescriptorType::UNIFORM_BUFFER)
-                .descriptor_count(1);
+                .descriptor_count(1)
+                .build()];
             let info = vk::DescriptorPoolCreateInfo::builder()
-                .pool_sizes(slice::from_ref(&sizes))
+                .pool_sizes(&sizes)
                 .max_sets(1);
             unsafe {
                 ctx.create_descriptor_pool(&info, None)
@@ -105,19 +106,20 @@ impl Data {
     }
 
     fn bind_to_descriptor_sets(&self, ctx: &Context) {
-        let buffer_info = vk::DescriptorBufferInfo::builder()
+        let uniforms_info = vk::DescriptorBufferInfo::builder()
             .buffer(*self.uniforms.buffer)
             .range(vk::WHOLE_SIZE);
 
         for &set in &self.descriptors.sets {
-            let writes = vk::WriteDescriptorSet::builder()
+            let writes = [vk::WriteDescriptorSet::builder()
                 .dst_set(set)
                 .dst_binding(0)
                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(slice::from_ref(&buffer_info));
+                .buffer_info(slice::from_ref(&uniforms_info))
+                .build()];
 
             unsafe {
-                ctx.update_descriptor_sets(slice::from_ref(&writes), &[]);
+                ctx.update_descriptor_sets(&writes, &[]);
             }
         }
     }

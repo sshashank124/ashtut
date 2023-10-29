@@ -10,7 +10,7 @@ use crate::gpu::{
     pipeline,
     scope::OneshotScope,
     sync_info::SyncInfo,
-    Descriptions, Destroy,
+    Destroy,
 };
 
 use super::common;
@@ -152,8 +152,8 @@ impl Pipeline {
                 .build(),
         ];
 
-        let vertex_binding_descriptions = Vertex::bindings_description();
-        let vertex_attribute_descriptions = Vertex::attributes_description();
+        let (vertex_binding_descriptions, vertex_attribute_descriptions) =
+            Self::vertex_binding_info();
 
         let vertex_input_info = vk::PipelineVertexInputStateCreateInfo::builder()
             .vertex_binding_descriptions(&vertex_binding_descriptions)
@@ -227,6 +227,40 @@ impl Pipeline {
         (layout, pipeline)
     }
 
+    fn vertex_binding_info() -> (
+        [vk::VertexInputBindingDescription; 1],
+        [vk::VertexInputAttributeDescription; 3],
+    ) {
+        let bindings = [vk::VertexInputBindingDescription {
+            binding: 0,
+            stride: std::mem::size_of::<Vertex>() as _,
+            input_rate: vk::VertexInputRate::VERTEX,
+        }];
+
+        let attributes = [
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 0,
+                format: vk::Format::R32G32B32A32_SFLOAT,
+                offset: bytemuck::offset_of!(Vertex, position) as _,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 1,
+                format: vk::Format::R32G32B32A32_SFLOAT,
+                offset: bytemuck::offset_of!(Vertex, normal) as _,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 2,
+                format: vk::Format::R32G32_SFLOAT,
+                offset: bytemuck::offset_of!(Vertex, tex_coord) as _,
+            },
+        ];
+
+        (bindings, attributes)
+    }
+
     pub fn run(&self, ctx: &Context, common: &common::Data, sync_info: &SyncInfo) {
         let commands = self.pipeline.begin_pipeline(ctx, 0);
 
@@ -265,7 +299,7 @@ impl Pipeline {
             );
         }
 
-        let scene_info = &common.scene.host_desc;
+        let scene_info = &common.scene.host_info;
         for instance in &scene_info.instances {
             unsafe {
                 let push_constants = PushConstants {
@@ -294,7 +328,10 @@ impl Pipeline {
                     scene_info.primitive_sizes[instance.primitive_index].indices_size,
                     1,
                     scene_info.primitive_infos[instance.primitive_index].indices_offset,
-                    scene_info.primitive_infos[instance.primitive_index].vertices_offset as _,
+                    scene_info.primitive_infos[instance.primitive_index]
+                        .vertices_offset
+                        .try_into()
+                        .unwrap(),
                     0,
                 );
             }

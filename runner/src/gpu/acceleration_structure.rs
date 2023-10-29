@@ -9,7 +9,7 @@ use crate::{
     util,
 };
 
-use super::{buffer::Buffer, context::Context, Descriptions, Destroy};
+use super::{buffer::Buffer, context::Context, Destroy};
 
 pub struct AccelerationStructures {
     blases: Vec<AccelerationStructure>,
@@ -64,7 +64,7 @@ impl AccelerationStructures {
         blases: &[AccelerationStructure],
     ) -> AccelerationStructure {
         let instances_info =
-            InstancesInfo::for_instances(ctx, scope, &scene.host_desc.instances, blases);
+            InstancesInfo::for_instances(ctx, scope, &scene.host_info.instances, blases);
         let geometry_info = GeometryInfo::for_instances(ctx, &instances_info);
         let mut build_info = BuildInfo::for_geometry(ctx, false, &geometry_info);
         scope.add_resource(instances_info);
@@ -345,7 +345,7 @@ impl<'a> GeometryInfo<'a> {
     ) -> Self {
         let triangles = vk::AccelerationStructureGeometryTrianglesDataKHR::builder()
             .vertex_format(vk::Format::R32G32B32_SFLOAT)
-            .vertex_stride(shared::Vertex::size() as _)
+            .vertex_stride(std::mem::size_of::<shared::Vertex>() as _)
             .max_vertex(primitive_size.vertices_size - 1)
             .vertex_data(vk::DeviceOrHostAddressConstKHR {
                 device_address: scene_info.vertices_address
@@ -374,12 +374,12 @@ impl<'a> GeometryInfo<'a> {
 
     fn for_primitives(scene: &'a Scene) -> Vec<Self> {
         scene
-            .host_desc
+            .host_info
             .primitive_infos
             .iter()
-            .zip(scene.host_desc.primitive_sizes.iter())
+            .zip(scene.host_info.primitive_sizes.iter())
             .map(|(primitive_info, primitive_size)| {
-                Self::for_primitive(&scene.device_desc, primitive_info, primitive_size)
+                Self::for_primitive(&scene.device_info, primitive_info, primitive_size)
             })
             .collect()
     }
@@ -439,7 +439,10 @@ impl Instance {
             acceleration_structure_reference: vk::AccelerationStructureReferenceKHR {
                 device_handle: blases[instance.primitive_index].address,
             },
-            instance_custom_index_and_mask: vk::Packed24_8::new(0, 0xff),
+            instance_custom_index_and_mask: vk::Packed24_8::new(
+                instance.primitive_index as _,
+                0xff,
+            ),
             instance_shader_binding_table_record_offset_and_flags: vk::Packed24_8::new(
                 0,
                 vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE.as_raw() as _,

@@ -6,7 +6,7 @@ pub use bytemuck;
 pub use spirv_std;
 pub use spirv_std::glam;
 
-use glam::{Mat4, Vec2, Vec3};
+use glam::{Mat4, Vec2, Vec3A};
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
@@ -26,7 +26,8 @@ pub struct UniformObjects {
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
 pub struct Vertex {
-    pub position: Vec3,
+    pub position: Vec3A,
+    pub normal: Vec3A,
     pub tex_coord: Vec2,
 }
 unsafe impl bytemuck::Zeroable for Vertex {}
@@ -57,9 +58,10 @@ pub struct SceneInfo {
 }
 
 impl Vertex {
-    pub const fn new(position: &[f32], tex_coord: &[f32]) -> Self {
+    pub fn new(position: &[f32], tex_coord: &[f32]) -> Self {
         Self {
-            position: Vec3::from_slice(position),
+            position: Vec3A::from_slice(position),
+            normal: Vec3A::ZERO,
             tex_coord: Vec2::from_slice(tex_coord),
         }
     }

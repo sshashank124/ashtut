@@ -63,7 +63,7 @@ impl Renderer {
         init_scope.finish(ctx);
 
         let uniforms = UniformObjects {
-            view: Self::rotate_view_around(&common.scene.host_desc.bounding_box, 0),
+            view: Self::rotate_view_around(&common.scene.host_info.bounding_box, 0),
             proj: shared::Transform::proj(glam::Mat4::perspective_rh(
                 f32::to_radians(45.0),
                 conf::ASPECT_RATIO,
@@ -101,7 +101,7 @@ impl Renderer {
         self.use_pathtracer = ctx.surface.config.extent.width < conf::PATHTRACER_TOGGLE_THRESHOLD;
 
         self.uniforms.view =
-            Self::rotate_view_around(&self.common.scene.host_desc.bounding_box, elapsed_ms);
+            Self::rotate_view_around(&self.common.scene.host_info.bounding_box, elapsed_ms);
         self.common.uniforms.update(&self.uniforms);
 
         let sync_info = SyncInfo::default();
