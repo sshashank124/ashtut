@@ -124,7 +124,7 @@ impl Pipeline {
         common: &common::Data,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
         let push_constant_ranges = vk::PushConstantRange {
-            stage_flags: vk::ShaderStageFlags::VERTEX,
+            stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
             offset: 0,
             size: std::mem::size_of::<PushConstants>() as _,
         };
@@ -301,15 +301,16 @@ impl Pipeline {
 
         let scene_info = &common.scene.host_info;
         for instance in &scene_info.instances {
-            unsafe {
-                let push_constants = PushConstants {
-                    model_transform: instance.transform,
-                };
+            let push_constants = PushConstants {
+                model_transform: instance.transform,
+                material_index: scene_info.primitive_infos[instance.primitive_index].material,
+            };
 
+            unsafe {
                 ctx.cmd_push_constants(
                     commands.buffer,
                     self.pipeline.layout,
-                    vk::ShaderStageFlags::VERTEX,
+                    vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
                     0,
                     bytemuck::bytes_of(&push_constants),
                 );

@@ -8,6 +8,7 @@ use crate::data::gltf_scene;
 pub struct Scene {
     pub indices: Buffer,
     pub vertices: Buffer,
+    pub materials: Buffer,
     pub primitives: Buffer,
     pub host_info: gltf_scene::Info,
     pub device_info: shared::SceneInfo,
@@ -20,19 +21,19 @@ impl Scene {
         scene: gltf_scene::GltfScene,
     ) -> Self {
         let (vertices, indices) = Self::init_vertex_index_buffer(ctx, scope, &scene.data);
+        let materials = Self::init_materials_buffer(ctx, scope, &scene.data);
+        let primitives = Self::init_primitives_buffer(ctx, scope, &scene.info);
 
         let host_info = scene.info;
-        let primitives = Self::init_primitives_buffer(ctx, scope, &host_info);
-
         let device_info = shared::SceneInfo {
             indices_address: indices.get_device_address(ctx),
             vertices_address: vertices.get_device_address(ctx),
-            primitives_address: primitives.get_device_address(ctx),
         };
 
         Self {
             indices,
             vertices,
+            materials,
             primitives,
 
             host_info,
@@ -87,9 +88,8 @@ impl Scene {
         scope: &mut OneshotScope,
         scene: &gltf_scene::Info,
     ) -> Buffer {
-        let create_info = vk::BufferCreateInfo::builder().usage(
-            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-        );
+        let create_info =
+            vk::BufferCreateInfo::builder().usage(vk::BufferUsageFlags::STORAGE_BUFFER);
 
         Buffer::create_with_staged_data(
             ctx,
@@ -99,11 +99,29 @@ impl Scene {
             bytemuck::cast_slice(&scene.primitive_infos),
         )
     }
+
+    fn init_materials_buffer(
+        ctx: &mut Context,
+        scope: &mut OneshotScope,
+        scene: &gltf_scene::Data,
+    ) -> Buffer {
+        let create_info =
+            vk::BufferCreateInfo::builder().usage(vk::BufferUsageFlags::STORAGE_BUFFER);
+
+        Buffer::create_with_staged_data(
+            ctx,
+            scope,
+            "Materials Buffer",
+            *create_info,
+            bytemuck::cast_slice(&scene.materials),
+        )
+    }
 }
 
 impl Destroy<Context> for Scene {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.primitives.destroy_with(ctx);
+        self.materials.destroy_with(ctx);
         self.vertices.destroy_with(ctx);
         self.indices.destroy_with(ctx);
     }

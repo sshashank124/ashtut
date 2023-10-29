@@ -15,6 +15,7 @@ pub struct GltfScene {
 pub struct Data {
     pub indices: Vec<u32>,
     pub vertices: Vec<shared::Vertex>,
+    pub materials: Vec<shared::Material>,
 }
 
 #[derive(Debug, Default)]
@@ -49,7 +50,11 @@ impl GltfScene {
         let mut data = Data::default();
 
         let mut bounding_boxes = Vec::new();
+
+        // json mesh index -> loaded primitives range
         let mut processed_meshes = HashMap::new();
+        // json material index -> loaded material index
+        let mut processed_materials = HashMap::new();
 
         scene
             .nodes()
@@ -59,7 +64,7 @@ impl GltfScene {
                     .or_insert_with(|| {
                         mesh.primitives().for_each(|primitive| {
                             let (primitive_info, primitive_size) =
-                                data.add_primitive(&primitive, &buffers);
+                                data.add_primitive(&primitive, &buffers, &mut processed_materials);
                             info.primitive_infos.push(primitive_info);
                             info.primitive_sizes.push(primitive_size);
                             let bbox = primitive.bounding_box();
@@ -93,7 +98,10 @@ impl Data {
         &mut self,
         primitive: &mesh::Primitive<'_>,
         raw_buffers: &[buffer::Data],
+        processed_materials: &mut HashMap<usize, usize>,
     ) -> (shared::PrimitiveInfo, PrimitiveSize) {
+        assert_eq!(primitive.mode(), mesh::Mode::Triangles);
+
         let reader = primitive.reader(|buffer| Some(&raw_buffers[buffer.index()]));
 
         let indices = reader.read_indices().expect("No indices found").into_u32();
@@ -117,9 +125,15 @@ impl Data {
         self.vertices.extend(vertices);
         let vertices_size = self.vertices.len() as u32 - vertices_offset;
 
+        let material = primitive.material();
+        let material = *processed_materials
+            .entry(material.index().unwrap_or_default())
+            .or_insert_with(|| self.add_material(&material)) as _;
+
         let primitive_info = shared::PrimitiveInfo {
             indices_offset,
             vertices_offset,
+            material,
         };
 
         let primitive_size = PrimitiveSize {
@@ -128,6 +142,16 @@ impl Data {
         };
 
         (primitive_info, primitive_size)
+    }
+
+    fn add_material(&mut self, material: &gltf::Material) -> usize {
+        let index = self.materials.len();
+
+        self.materials.push(shared::Material {
+            color: material.pbr_metallic_roughness().base_color_factor().into(),
+        });
+
+        index
     }
 }
 

@@ -9,18 +9,20 @@ use shared::{
         ray_tracing::{AccelerationStructure, RayFlags},
         spirv, Image,
     },
-    PrimitiveInfo, UniformObjects, Vertex,
+    Material, PrimitiveInfo, UniformObjects, Vertex,
 };
 
 use ray::Payload;
 
 pub type OutputImage = Image!(2D, format = rgba32f, sampled = false);
 
+#[allow(clippy::too_many_arguments)]
 #[spirv(closest_hit)]
 pub fn closest_hit(
     #[spirv(primitive_id)] primitive_id: usize,
     #[spirv(instance_custom_index)] primitive_index: usize,
     #[spirv(hit_attribute)] hit_uv: &Vec2,
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] materials: &[Material],
     #[spirv(storage_buffer, descriptor_set = 1, binding = 2)] indices: &[u32],
     #[spirv(storage_buffer, descriptor_set = 1, binding = 3)] vertices: &[Vertex],
     #[spirv(storage_buffer, descriptor_set = 1, binding = 4)] primitives: &[PrimitiveInfo],
@@ -47,9 +49,9 @@ pub fn closest_hit(
         vertices[2].tex_coord,
     ];
 
-    let tex_coord = bary.x * tex_coords[0] + bary.y * tex_coords[1] + bary.z * tex_coords[2];
+    let _tex_coord = bary.x * tex_coords[0] + bary.y * tex_coords[1] + bary.z * tex_coords[2];
 
-    out.hit_value = tex_coord.extend(1.);
+    out.hit_value = materials[primitive.material as usize].color.xyz();
 }
 
 #[spirv(ray_generation)]

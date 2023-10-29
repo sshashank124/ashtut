@@ -65,12 +65,22 @@ impl Data {
 
     pub fn create_descriptors(ctx: &Context) -> Descriptors {
         let layout = {
-            let bindings = [vk::DescriptorSetLayoutBinding::builder()
-                .binding(0)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .descriptor_count(1)
-                .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::RAYGEN_KHR)
-                .build()];
+            let bindings = [
+                vk::DescriptorSetLayoutBinding::builder()
+                    .binding(0)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .descriptor_count(1)
+                    .stage_flags(vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::RAYGEN_KHR)
+                    .build(),
+                vk::DescriptorSetLayoutBinding::builder()
+                    .binding(1)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .descriptor_count(1)
+                    .stage_flags(
+                        vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                    )
+                    .build(),
+            ];
             let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
             unsafe {
                 ctx.create_descriptor_set_layout(&info, None)
@@ -79,10 +89,16 @@ impl Data {
         };
 
         let pool = {
-            let sizes = [vk::DescriptorPoolSize::builder()
-                .ty(vk::DescriptorType::UNIFORM_BUFFER)
-                .descriptor_count(1)
-                .build()];
+            let sizes = [
+                vk::DescriptorPoolSize::builder()
+                    .ty(vk::DescriptorType::UNIFORM_BUFFER)
+                    .descriptor_count(1)
+                    .build(),
+                vk::DescriptorPoolSize::builder()
+                    .ty(vk::DescriptorType::STORAGE_BUFFER)
+                    .descriptor_count(1)
+                    .build(),
+            ];
             let info = vk::DescriptorPoolCreateInfo::builder()
                 .pool_sizes(&sizes)
                 .max_sets(1);
@@ -110,13 +126,25 @@ impl Data {
             .buffer(*self.uniforms.buffer)
             .range(vk::WHOLE_SIZE);
 
+        let materials_info = vk::DescriptorBufferInfo::builder()
+            .buffer(*self.scene.materials)
+            .range(vk::WHOLE_SIZE);
+
         for &set in &self.descriptors.sets {
-            let writes = [vk::WriteDescriptorSet::builder()
-                .dst_set(set)
-                .dst_binding(0)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                .buffer_info(slice::from_ref(&uniforms_info))
-                .build()];
+            let writes = [
+                vk::WriteDescriptorSet::builder()
+                    .dst_set(set)
+                    .dst_binding(0)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .buffer_info(slice::from_ref(&uniforms_info))
+                    .build(),
+                vk::WriteDescriptorSet::builder()
+                    .dst_set(set)
+                    .dst_binding(1)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .buffer_info(slice::from_ref(&materials_info))
+                    .build(),
+            ];
 
             unsafe {
                 ctx.update_descriptor_sets(&writes, &[]);

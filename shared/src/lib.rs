@@ -6,12 +6,13 @@ pub use bytemuck;
 pub use spirv_std;
 pub use spirv_std::glam;
 
-use glam::{Mat4, Vec2, Vec3A};
+use glam::{Mat4, Vec2, Vec3A, Vec4};
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
 pub struct PushConstants {
     pub model_transform: Mat4,
+    pub material_index: u32,
 }
 unsafe impl bytemuck::Zeroable for PushConstants {}
 unsafe impl bytemuck::Pod for PushConstants {}
@@ -47,14 +48,22 @@ unsafe impl bytemuck::Pod for Transform {}
 pub struct PrimitiveInfo {
     pub indices_offset: u32,
     pub vertices_offset: u32,
+    pub material: u32,
 }
+
+#[repr(C)]
+#[derive(Copy, Clone, Default)]
+pub struct Material {
+    pub color: Vec4,
+}
+unsafe impl bytemuck::Zeroable for Material {}
+unsafe impl bytemuck::Pod for Material {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SceneInfo {
     pub indices_address: u64,
     pub vertices_address: u64,
-    pub primitives_address: u64,
 }
 
 impl Vertex {
