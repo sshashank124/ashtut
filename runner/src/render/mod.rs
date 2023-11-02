@@ -24,7 +24,6 @@ pub mod conf {
         height: HEIGHT,
         width: (HEIGHT as f32 * ASPECT_RATIO) as _,
     };
-    pub const PATHTRACER_TOGGLE_THRESHOLD: u32 = 1200;
 }
 
 pub struct Renderer {
@@ -83,7 +82,7 @@ impl Renderer {
             swapchain,
 
             uniforms,
-            use_pathtracer: false,
+            use_pathtracer: true,
             state,
         }
     }
@@ -97,8 +96,6 @@ impl Renderer {
             )
             .expect("Failed to wait for fence");
         }
-
-        self.use_pathtracer = ctx.surface.config.extent.width < conf::PATHTRACER_TOGGLE_THRESHOLD;
 
         self.uniforms.view =
             Self::rotate_view_around(&self.common.scene.host_info.bounding_box, elapsed_ms);

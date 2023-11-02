@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gltf::{buffer, mesh, scene};
 
-use shared::{self, glam::Mat4};
+use shared::{self, glam};
 
 use super::bounding_box::BoundingBox;
 
@@ -35,7 +35,7 @@ pub struct PrimitiveSize {
 #[derive(Clone, Debug)]
 pub struct Instance {
     pub primitive_index: usize,
-    pub transform: Mat4,
+    pub transform: glam::Mat4,
 }
 
 impl GltfScene {
@@ -56,9 +56,9 @@ impl GltfScene {
         // json material index -> loaded material index
         let mut processed_materials = HashMap::new();
 
-        scene
-            .nodes()
-            .traverse_meshes(Mat4::IDENTITY, &mut |mesh: &mesh::Mesh<'_>, transform| {
+        scene.nodes().traverse_meshes(
+            glam::Mat4::IDENTITY,
+            &mut |mesh: &mesh::Mesh<'_>, transform| {
                 let primitives_range = processed_meshes
                     .entry(mesh.index())
                     .or_insert_with(|| {
@@ -81,7 +81,8 @@ impl GltfScene {
                         primitive_index,
                         transform,
                     }));
-            });
+            },
+        );
 
         info.bounding_box = info
             .instances
@@ -110,17 +111,22 @@ impl Data {
         let indices_size = self.indices.len() as u32 - indices_offset;
 
         let positions = reader.read_positions().expect("No positions found");
+        let normals = reader.read_normals().map_or_else(
+            || Box::new(std::iter::repeat_with(Default::default)) as Box<_>,
+            |nn| Box::new(nn) as Box<dyn Iterator<Item = [f32; 3]>>,
+        );
         let tex_coords = reader
             .read_tex_coords(0)
-            .map(mesh::util::ReadTexCoords::into_f32);
-        #[allow(clippy::option_if_let_else)]
-        let tex_coords: Box<dyn Iterator<Item = [f32; 2]>> = if let Some(tc) = tex_coords {
-            Box::new(tc)
-        } else {
-            Box::new(std::iter::repeat_with(Default::default))
-        };
+            .map(mesh::util::ReadTexCoords::into_f32)
+            .map_or_else(
+                || Box::new(std::iter::repeat_with(Default::default)) as Box<_>,
+                |uv| Box::new(uv) as Box<dyn Iterator<Item = [f32; 2]>>,
+            );
 
-        let vertices = positions.zip(tex_coords).map(shared::Vertex::from);
+        let vertices = positions
+            .zip(normals)
+            .zip(tex_coords)
+            .map(shared::Vertex::from);
         let vertices_offset = self.vertices.len() as _;
         self.vertices.extend(vertices);
         let vertices_size = self.vertices.len() as u32 - vertices_offset;
@@ -149,6 +155,7 @@ impl Data {
 
         self.materials.push(shared::Material {
             color: material.pbr_metallic_roughness().base_color_factor().into(),
+            emittance: glam::Vec3::from(material.emissive_factor()).extend(1.0),
         });
 
         index
@@ -156,12 +163,21 @@ impl Data {
 }
 
 trait Traversable {
-    fn traverse_meshes(self, transform: Mat4, f: &mut impl FnMut(&mesh::Mesh<'_>, Mat4));
+    fn traverse_meshes(
+        self,
+        transform: glam::Mat4,
+        f: &mut impl FnMut(&mesh::Mesh<'_>, glam::Mat4),
+    );
 }
 
 impl Traversable for scene::Node<'_> {
-    fn traverse_meshes(self, transform: Mat4, f: &mut impl FnMut(&mesh::Mesh<'_>, Mat4)) {
-        let global_transform = transform * Mat4::from_cols_array_2d(&self.transform().matrix());
+    fn traverse_meshes(
+        self,
+        transform: glam::Mat4,
+        f: &mut impl FnMut(&mesh::Mesh<'_>, glam::Mat4),
+    ) {
+        let global_transform =
+            transform * glam::Mat4::from_cols_array_2d(&self.transform().matrix());
         if let Some(mesh) = self.mesh() {
             f(&mesh, global_transform);
         }
@@ -172,7 +188,11 @@ impl Traversable for scene::Node<'_> {
 macro_rules! impl_traversable {
     ($t:ty) => {
         impl Traversable for $t {
-            fn traverse_meshes(self, transform: Mat4, f: &mut impl FnMut(&mesh::Mesh<'_>, Mat4)) {
+            fn traverse_meshes(
+                self,
+                transform: glam::Mat4,
+                f: &mut impl FnMut(&mesh::Mesh<'_>, glam::Mat4),
+            ) {
                 self.for_each(|elem| elem.traverse_meshes(transform, f));
             }
         }

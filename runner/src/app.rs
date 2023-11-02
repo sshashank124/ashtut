@@ -90,6 +90,15 @@ impl App {
                         },
                     ..
                 } => control_flow.set_exit(),
+                WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            state,
+                            virtual_keycode: Some(VirtualKeyCode::Space),
+                            ..
+                        },
+                    ..
+                } => self.renderer.use_pathtracer = *state == ElementState::Released,
                 _ => {}
             },
             _ => {}

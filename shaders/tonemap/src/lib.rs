@@ -8,7 +8,7 @@ use shared::{
     },
 };
 
-// const GAMMA: f32 = 1.0 / 2.2;
+const GAMMA: f32 = 1.0 / 2.2;
 
 #[spirv(vertex)]
 pub fn vert_main(
@@ -27,6 +27,5 @@ pub fn frag_main(
     color: &mut Vec4,
 ) {
     let raw = texture.sample(uv);
-    // *color = raw.powf(GAMMA);
-    *color = raw;
+    *color = raw.powf(GAMMA);
 }

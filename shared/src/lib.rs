@@ -55,6 +55,7 @@ pub struct PrimitiveInfo {
 #[derive(Copy, Clone, Default)]
 pub struct Material {
     pub color: Vec4,
+    pub emittance: Vec4,
 }
 unsafe impl bytemuck::Zeroable for Material {}
 unsafe impl bytemuck::Pod for Material {}
@@ -67,19 +68,19 @@ pub struct SceneInfo {
 }
 
 impl Vertex {
-    pub fn new(position: &[f32], tex_coord: &[f32]) -> Self {
+    pub fn new(position: &[f32], normal: &[f32], tex_coord: &[f32]) -> Self {
         Self {
             position: Vec3A::from_slice(position),
-            normal: Vec3A::ZERO,
+            normal: Vec3A::from_slice(normal),
             tex_coord: Vec2::from_slice(tex_coord),
         }
     }
 }
 
-type RawData = ([f32; 3], [f32; 2]);
+type RawData = (([f32; 3], [f32; 3]), [f32; 2]); // ((position, normal), tex_coord)
 impl From<RawData> for Vertex {
-    fn from((position, tex_coord): RawData) -> Self {
-        Self::new(&position, &tex_coord)
+    fn from(((position, normal), tex_coord): RawData) -> Self {
+        Self::new(&position, &normal, &tex_coord)
     }
 }
 
