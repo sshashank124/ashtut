@@ -18,17 +18,19 @@ use crate::{
 pub struct Data {
     pub descriptors: Descriptors,
     pub target: Image<{ format::HDR }>,
+    pub resolution: vk::Extent2D,
     pub uniforms: Uniforms,
     pub scene: Scene,
 }
 
 impl Data {
-    pub fn create(
-        ctx: &mut Context,
-        scene: gltf_scene::GltfScene,
-        resolution: vk::Extent2D,
-    ) -> Self {
+    pub fn create(ctx: &mut Context, scene: gltf_scene::GltfScene) -> Self {
         let descriptors = Self::create_descriptors(ctx);
+
+        let resolution = vk::Extent2D {
+            width: crate::app::conf::FRAME_RESOLUTION.0,
+            height: crate::app::conf::FRAME_RESOLUTION.1,
+        };
 
         let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.graphics());
 
@@ -56,6 +58,7 @@ impl Data {
         let data = Self {
             descriptors,
             target,
+            resolution,
             uniforms,
             scene,
         };

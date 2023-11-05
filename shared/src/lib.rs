@@ -10,16 +10,27 @@ use glam::{Mat4, Vec2, Vec3A, Vec4};
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
-pub struct PushConstants {
+pub struct RasterizerConstants {
     pub model_transform: Mat4,
     pub material_index: u32,
 }
-unsafe impl bytemuck::Zeroable for PushConstants {}
-unsafe impl bytemuck::Pod for PushConstants {}
+unsafe impl bytemuck::Zeroable for RasterizerConstants {}
+unsafe impl bytemuck::Pod for RasterizerConstants {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct UniformObjects {
+pub struct PathtracerConstants {
+    pub frame: u32,
+}
+#[repr(C)]
+#[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Uniforms {
+    pub camera: Camera,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Camera {
     pub view: Transform,
     pub proj: Transform,
 }

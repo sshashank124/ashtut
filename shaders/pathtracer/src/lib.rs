@@ -1,17 +1,19 @@
 #![cfg_attr(target_arch = "spirv", no_std)]
 
 mod math;
+mod rand;
 mod ray;
 
 use math::*;
-use ray::Payload;
+use rand::Rng;
+use ray::{Payload, Ray};
 
 #[allow(unused_imports)]
 use shared::spirv_std::num_traits::Float;
 use shared::{
     glam::*,
     spirv_std::{self, *},
-    Material, PrimitiveInfo, UniformObjects, Vertex,
+    Material, PathtracerConstants, PrimitiveInfo, Uniforms, Vertex,
 };
 
 pub type OutputImage = Image!(2D, format = rgba32f, sampled = false);
@@ -36,7 +38,7 @@ pub fn closest_hit(
     #[spirv(storage_buffer, descriptor_set = 1, binding = 2)] indices: &[u32],
     #[spirv(storage_buffer, descriptor_set = 1, binding = 3)] vertices: &[Vertex],
     #[spirv(storage_buffer, descriptor_set = 1, binding = 4)] primitives: &[PrimitiveInfo],
-    #[spirv(incoming_ray_payload)] out: &mut Payload,
+    #[spirv(incoming_ray_payload)] payload: &mut Payload,
 ) {
     let bary = barycentrics(hit_uv);
     let object_to_world = Mat4::from_cols(
@@ -56,35 +58,47 @@ pub fn closest_hit(
     ));
     let world_position = (object_to_world * position.extend(1.)).truncate();
 
-    let normal = Vec3::from(dotv(
-        bary,
-        [verts[0].normal, verts[1].normal, verts[2].normal],
-    ))
-    .normalize();
-    let world_normal = (world_to_object.transpose() * normal).normalize();
-
-    let tangent = if world_normal.x.abs() > world_normal.y.abs() {
-        vec3(world_normal.z, 0., -world_normal.x) * world_normal.xz().length_recip()
-    } else {
-        vec3(0., -world_normal.z, world_normal.y) * world_normal.yz().length_recip()
+    let world_normal = {
+        let normal = Vec3::from(dotv(
+            bary,
+            [verts[0].normal, verts[1].normal, verts[2].normal],
+        ))
+        .normalize();
+        (world_to_object.transpose() * normal).normalize()
     };
-    let _bitangent = world_normal.cross(tangent);
 
-    let ray_origin = world_position;
-    let ray_direction = world_normal;
+    let frame = {
+        let tangent = if world_normal.x.abs() > world_normal.y.abs() {
+            vec3(world_normal.z, 0., -world_normal.x) * world_normal.xz().length_recip()
+        } else {
+            vec3(0., -world_normal.z, world_normal.y) * world_normal.yz().length_recip()
+        };
+        let bitangent = world_normal.cross(tangent);
+        Mat3::from_cols(tangent, bitangent, world_normal)
+    };
+
+    let out_dir = {
+        let r1 = payload.rng.next_float();
+        let r2 = 2. * core::f32::consts::PI * payload.rng.next_float();
+        let sq = r1.sqrt();
+        let dir = vec3(r2.cos() * sq, r2.sin() * sq, (1. - r1).sqrt());
+        frame * dir
+    };
 
     let material = materials[primitive.material as usize];
 
     let albedo = material.color.truncate();
     let emittance = material.emittance.truncate();
 
-    out.origin = ray_origin;
-    out.direction = ray_direction;
-    out.hit_value = emittance;
-    out.weight = albedo;
+    payload.ray = Ray {
+        origin: world_position,
+        direction: frame * out_dir,
+    };
+    payload.hit_value = emittance;
+    payload.weight = albedo;
 }
 
-const MAX_RECURSE_DEPTH: u32 = 2;
+const MAX_RECURSE_DEPTH: u32 = 5;
 const RAY_FLAGS: ray_tracing::RayFlags = ray_tracing::RayFlags::OPAQUE;
 const T_MIN: f32 = 1e-3;
 const T_MAX: f32 = 1e+5;
@@ -93,20 +107,28 @@ const T_MAX: f32 = 1e+5;
 pub fn ray_generation(
     #[spirv(launch_id)] launch_id: UVec3,
     #[spirv(launch_size)] launch_size: UVec3,
-    #[spirv(uniform, descriptor_set = 0, binding = 0)] uniforms: &UniformObjects,
+    #[spirv(push_constant)] constants: &PathtracerConstants,
+    #[spirv(uniform, descriptor_set = 0, binding = 0)] uniforms: &Uniforms,
     #[spirv(descriptor_set = 1, binding = 0)] tlas: &ray_tracing::AccelerationStructure,
     #[spirv(descriptor_set = 1, binding = 1)] output_image: &OutputImage,
     #[spirv(ray_payload)] payload: &mut ray::Payload,
 ) {
-    let uv = (launch_id.as_vec3().xy() + 0.5) / launch_size.as_vec3().xy();
+    let ray = {
+        let uv = (launch_id.as_vec3().xy() + 0.5) / launch_size.as_vec3().xy();
+        let target = (uniforms.camera.proj / (2. * uv - 1.).extend(1.).extend(1.)).truncate();
+        Ray {
+            origin: (uniforms.camera.view / Vec4::W).truncate(),
+            direction: (uniforms.camera.view / target.normalize().extend(0.)).truncate(),
+        }
+    };
 
-    let origin = (uniforms.view / Vec4::W).truncate();
-    let target = (uniforms.proj / (2. * uv - 1.).extend(1.).extend(1.)).truncate();
-    let direction = (uniforms.view / target.normalize().extend(0.)).truncate();
+    let rng = Rng::from_seed(
+        launch_size.x * (launch_size.y * constants.frame + launch_id.y) + launch_id.x,
+    );
 
     *payload = Payload {
-        origin,
-        direction,
+        ray,
+        rng,
         ..Default::default()
     };
 
@@ -120,9 +142,9 @@ pub fn ray_generation(
                 0,
                 0,
                 0,
-                payload.origin,
+                payload.ray.origin,
                 T_MIN,
-                payload.direction,
+                payload.ray.direction,
                 T_MAX,
                 payload,
             );
@@ -132,7 +154,15 @@ pub fn ray_generation(
         payload.depth += 1;
     }
 
-    unsafe { output_image.write(launch_id.xy(), total.extend(1.0)) };
+    let new_color = if constants.frame > 0 {
+        let w = (constants.frame as f32 + 1.).recip();
+        let old_color = output_image.read(launch_id.xy()).xyz();
+        old_color.lerp(total, w)
+    } else {
+        total
+    };
+
+    unsafe { output_image.write(launch_id.xy(), new_color.extend(1.0)) };
 }
 
 #[spirv(miss)]

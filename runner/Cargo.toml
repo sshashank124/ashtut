@@ -10,7 +10,7 @@ gpu-allocator = { version = "0.23", default-features = false, features = [ "vulk
 image = "0.24"
 shared = { path = "../shared" }
 tobj = "4"
-winit = "0.28"
+winit = "0.29"
 
 [build-dependencies]
 spirv-builder = "0.9"

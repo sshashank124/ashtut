@@ -1,10 +1,10 @@
-use std::{
-    ffi::c_void,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 
 use ash::{extensions::khr, vk};
-use winit::{platform::windows::WindowExtWindows, window::Window};
+use winit::{
+    raw_window_handle::{HasWindowHandle, RawWindowHandle},
+    window::Window,
+};
 
 use super::{instance::Instance, physical_device::PhysicalDevice, Destroy};
 
@@ -217,12 +217,22 @@ impl DerefMut for Handle {
 }
 
 fn create_surface(instance: &Instance, window: &Window) -> vk::SurfaceKHR {
-    let create_info = vk::Win32SurfaceCreateInfoKHR::builder()
-        .hinstance(window.hinstance() as *const c_void)
-        .hwnd(window.hwnd() as *const c_void);
-    unsafe {
-        khr::Win32Surface::new(&instance.entry, instance)
-            .create_win32_surface(&create_info, None)
-            .expect("Failed to create Windows surface")
+    let raw_window_handle = window
+        .window_handle()
+        .expect("Unable to get window handle")
+        .as_raw();
+
+    match raw_window_handle {
+        RawWindowHandle::Win32(handle) => {
+            let create_info = vk::Win32SurfaceCreateInfoKHR::builder()
+                .hwnd(handle.hwnd.get() as _)
+                .hinstance(handle.hinstance.expect("No Win32 HINSTANCE found").get() as _);
+            unsafe {
+                khr::Win32Surface::new(&instance.entry, instance)
+                    .create_win32_surface(&create_info, None)
+                    .expect("Failed to create Windows surface")
+            }
+        }
+        _ => panic!("This platform is not supported yet"),
     }
 }

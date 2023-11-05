@@ -3,10 +3,8 @@ mod sync_state;
 
 use std::slice;
 
-use shared::{glam, UniformObjects};
-
 use crate::{
-    data::{bounding_box::BoundingBox, gltf_scene::GltfScene},
+    data::gltf_scene::GltfScene,
     gpu::{
         context::Context, scope::OneshotScope, swapchain::Swapchain, sync_info::SyncInfo, Destroy,
     },
@@ -17,14 +15,7 @@ use self::{
     sync_state::SyncState,
 };
 
-pub mod conf {
-    pub const ASPECT_RATIO: f32 = 4.0 / 3.0;
-    const HEIGHT: u32 = 768;
-    pub const FRAME_RESOLUTION: ash::vk::Extent2D = ash::vk::Extent2D {
-        height: HEIGHT,
-        width: (HEIGHT as f32 * ASPECT_RATIO) as _,
-    };
-}
+pub mod conf {}
 
 pub struct Renderer {
     // render pass
@@ -37,8 +28,9 @@ pub struct Renderer {
     swapchain: Swapchain,
 
     // state
-    uniforms: UniformObjects,
-    pub use_pathtracer: bool,
+    uniforms: shared::Uniforms,
+    use_pathtracer: bool,
+    frame: u32,
     state: SyncState,
 }
 
@@ -47,9 +39,10 @@ pub enum Error {
 }
 
 impl Renderer {
-    pub fn create(ctx: &mut Context, gltf_file: &str) -> Self {
-        let scene = GltfScene::load(gltf_file);
-        let common = common::Data::create(ctx, scene, conf::FRAME_RESOLUTION);
+    pub fn create(ctx: &mut Context, scene: GltfScene, camera: shared::Camera) -> Self {
+        let mut common = common::Data::create(ctx, scene);
+        let uniforms = shared::Uniforms { camera };
+        common.uniforms.update(&uniforms);
 
         let pathtracer_pipeline = pathtracer::Pipeline::create(ctx, &common);
 
@@ -60,16 +53,6 @@ impl Renderer {
         let swapchain = Swapchain::create(ctx, &mut init_scope, tonemap_pipeline.render_pass);
 
         init_scope.finish(ctx);
-
-        let uniforms = UniformObjects {
-            view: Self::rotate_view_around(&common.scene.host_info.bounding_box, 0),
-            proj: shared::Transform::proj(glam::Mat4::perspective_rh(
-                f32::to_radians(45.0),
-                conf::ASPECT_RATIO,
-                0.1,
-                100.0,
-            )),
-        };
 
         let state = SyncState::create(ctx);
 
@@ -82,12 +65,13 @@ impl Renderer {
             swapchain,
 
             uniforms,
+            frame: 0,
             use_pathtracer: true,
             state,
         }
     }
 
-    pub fn render(&mut self, ctx: &Context, elapsed_ms: u128) -> Result<(), Error> {
+    pub fn render(&mut self, ctx: &Context) -> Result<(), Error> {
         unsafe {
             ctx.wait_for_fences(
                 slice::from_ref(&self.state.in_flight_fence()),
@@ -97,13 +81,10 @@ impl Renderer {
             .expect("Failed to wait for fence");
         }
 
-        self.uniforms.view =
-            Self::rotate_view_around(&self.common.scene.host_info.bounding_box, elapsed_ms);
-        self.common.uniforms.update(&self.uniforms);
-
         let sync_info = SyncInfo::default();
         if self.use_pathtracer {
-            self.pathtracer_pipeline.run(ctx, &sync_info);
+            self.pathtracer_pipeline
+                .run(ctx, &self.common, self.frame, &sync_info);
         } else {
             self.rasterizer_pipeline.run(ctx, &self.common, &sync_info);
         }
@@ -137,6 +118,7 @@ impl Renderer {
             )
         };
 
+        self.frame += 1;
         self.state.advance();
 
         (!needs_recreating)
@@ -144,18 +126,15 @@ impl Renderer {
             .ok_or(Error::NeedsRecreating)
     }
 
-    fn rotate_view_around(bounds: &BoundingBox, elapsed_ms: u128) -> shared::Transform {
-        let ms_per_rotation = 10000;
-        let frac_millis = (elapsed_ms % ms_per_rotation) as f32 / ms_per_rotation as f32;
-        let rotation = glam::Mat4::from_rotation_y(frac_millis * 2.0 * std::f32::consts::PI);
-        let camera_pos =
-            (rotation * (bounds.size() * 1.2).extend(1.0)).truncate() + bounds.center();
+    pub fn update_camera(&mut self, camera: shared::Camera) {
+        self.uniforms.camera = camera;
+        self.common.uniforms.update(&self.uniforms);
+        self.frame = 0;
+    }
 
-        shared::Transform::new(glam::Mat4::look_at_rh(
-            camera_pos,
-            bounds.center(),
-            glam::Vec3::Y,
-        ))
+    pub fn toggle_renderer(&mut self) {
+        self.use_pathtracer = !self.use_pathtracer;
+        self.frame = 0;
     }
 
     pub fn recreate(&mut self, ctx: &mut Context) {

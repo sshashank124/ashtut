@@ -1,7 +1,5 @@
 use ash::vk;
 
-use shared::UniformObjects;
-
 use super::{buffer::Buffer, context::Context, Destroy};
 
 pub struct Uniforms {
@@ -12,7 +10,7 @@ impl Uniforms {
     pub fn create(ctx: &mut Context) -> Self {
         let buffer_info = vk::BufferCreateInfo::builder()
             .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
-            .size(std::mem::size_of::<UniformObjects>() as u64)
+            .size(std::mem::size_of::<shared::Uniforms>() as u64)
             .sharing_mode(vk::SharingMode::EXCLUSIVE);
 
         let buffer = Buffer::create(
@@ -25,7 +23,7 @@ impl Uniforms {
         Self { buffer }
     }
 
-    pub fn update(&mut self, uniforms: &UniformObjects) {
+    pub fn update(&mut self, uniforms: &shared::Uniforms) {
         self.buffer.fill_with(uniforms);
     }
 }

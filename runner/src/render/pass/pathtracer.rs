@@ -4,6 +4,7 @@ use std::{
 };
 
 use ash::vk;
+use shared::{bytemuck, PathtracerConstants};
 
 use crate::gpu::{
     acceleration_structure::AccelerationStructures,
@@ -245,8 +246,15 @@ impl Pipeline {
         descriptor_set_layouts: &[vk::DescriptorSetLayout],
         ray_tracing_shaders: &RayTracingShaders,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
-        let layout_create_info =
-            vk::PipelineLayoutCreateInfo::builder().set_layouts(descriptor_set_layouts);
+        let push_constant_ranges = vk::PushConstantRange {
+            stage_flags: vk::ShaderStageFlags::RAYGEN_KHR,
+            offset: 0,
+            size: std::mem::size_of::<PathtracerConstants>() as _,
+        };
+
+        let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+            .set_layouts(descriptor_set_layouts)
+            .push_constant_ranges(slice::from_ref(&push_constant_ranges));
 
         let layout = unsafe {
             ctx.create_pipeline_layout(&layout_create_info, None)
@@ -276,10 +284,20 @@ impl Pipeline {
         (layout, pipeline)
     }
 
-    pub fn run(&self, ctx: &Context, sync_info: &SyncInfo) {
+    pub fn run(&self, ctx: &Context, common: &common::Data, frame: u32, sync_info: &SyncInfo) {
         let commands = self.pipeline.begin_pipeline(ctx, 0);
 
+        let push_constants = PathtracerConstants { frame };
+
         unsafe {
+            ctx.cmd_push_constants(
+                commands.buffer,
+                self.pipeline.layout,
+                vk::ShaderStageFlags::RAYGEN_KHR,
+                0,
+                bytemuck::bytes_of(&push_constants),
+            );
+
             ctx.cmd_bind_pipeline(
                 commands.buffer,
                 vk::PipelineBindPoint::RAY_TRACING_KHR,
@@ -301,8 +319,8 @@ impl Pipeline {
                 &self.shader_binding_table.misses_region,
                 &self.shader_binding_table.closest_hits_region,
                 &self.shader_binding_table.call_region,
-                super::super::conf::FRAME_RESOLUTION.width,
-                super::super::conf::FRAME_RESOLUTION.height,
+                common.resolution.width,
+                common.resolution.height,
                 1,
             );
         }

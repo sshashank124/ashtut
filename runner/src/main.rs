@@ -11,6 +11,7 @@
 mod app;
 mod data;
 mod gpu;
+mod input;
 mod render;
 mod util;
 
@@ -23,8 +24,10 @@ use app::App;
 fn main() {
     let gltf_file = env::args().nth(1).expect("Please specify a gltf file");
 
-    let event_loop = EventLoop::new();
-    let window = App::init_window(&event_loop);
+    let event_loop = EventLoop::new().expect("Failed to create event loop");
+    let window = App::window_builder()
+        .build(&event_loop)
+        .expect("Failed to create window");
     let app = App::new(&window, &gltf_file);
-    app.run(event_loop, window);
+    app.run(event_loop);
 }

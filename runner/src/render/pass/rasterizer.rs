@@ -1,7 +1,7 @@
 use std::slice;
 
 use ash::vk;
-use shared::{bytemuck, PushConstants, Vertex};
+use shared::{bytemuck, RasterizerConstants, Vertex};
 
 use crate::gpu::{
     context::Context,
@@ -38,7 +38,7 @@ impl Pipeline {
             scope,
             "Render target",
             render_pass,
-            super::super::conf::FRAME_RESOLUTION,
+            common.resolution,
             std::slice::from_ref(&common.target),
         );
 
@@ -126,7 +126,7 @@ impl Pipeline {
         let push_constant_ranges = vk::PushConstantRange {
             stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
             offset: 0,
-            size: std::mem::size_of::<PushConstants>() as _,
+            size: std::mem::size_of::<RasterizerConstants>() as _,
         };
 
         let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
@@ -163,11 +163,11 @@ impl Pipeline {
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
 
         let viewport = vk::Viewport::builder()
-            .width(super::super::conf::FRAME_RESOLUTION.width as f32)
-            .height(super::super::conf::FRAME_RESOLUTION.height as f32)
+            .width(common.resolution.width as _)
+            .height(common.resolution.height as _)
             .max_depth(1.0);
 
-        let scissor = vk::Rect2D::builder().extent(super::super::conf::FRAME_RESOLUTION);
+        let scissor = vk::Rect2D::builder().extent(common.resolution);
 
         let viewport_info = vk::PipelineViewportStateCreateInfo::builder()
             .viewports(slice::from_ref(&viewport))
@@ -266,7 +266,7 @@ impl Pipeline {
 
         let render_pass_info = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass)
-            .render_area(super::super::conf::FRAME_RESOLUTION.into())
+            .render_area(common.resolution.into())
             .framebuffer(self.target.framebuffers[0])
             .clear_values(framebuffers::CLEAR_VALUES)
             .build();
@@ -301,7 +301,7 @@ impl Pipeline {
 
         let scene_info = &common.scene.host_info;
         for instance in &scene_info.instances {
-            let push_constants = PushConstants {
+            let push_constants = RasterizerConstants {
                 model_transform: instance.transform,
                 material_index: scene_info.primitive_infos[instance.primitive_index].material,
             };
