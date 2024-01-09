@@ -1,10 +1,12 @@
 [package]
 name = "rasterizer"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 
 [lib]
 crate-type = ["dylib"]
 
 [dependencies]
-shared = { path = "../../shared" }
+glam = { workspace = true }
+shared = { workspace = true }
+spirv-std = { workspace = true }

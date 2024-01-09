@@ -5,8 +5,6 @@ use winit::{
     keyboard::KeyCode,
 };
 
-use shared::glam;
-
 #[derive(Default)]
 pub struct State {
     keys: HashSet<KeyCode>,

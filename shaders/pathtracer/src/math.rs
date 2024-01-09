@@ -1,6 +1,7 @@
 use core::ops::{Add, Mul};
 
-use shared::{glam::*, PrimitiveInfo, Vertex};
+use glam::*;
+use shared::{scene::PrimitiveInfo, Vertex};
 
 pub fn triangle(
     indices: &[u32],

@@ -2,8 +2,6 @@ use std::{ops::Deref, slice};
 
 use ash::vk;
 
-use shared::bytemuck;
-
 use super::{alloc, context::Context, scope::OneshotScope, Destroy};
 
 pub struct Buffer {

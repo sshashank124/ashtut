@@ -1,0 +1,13 @@
+[package]
+name = "scene"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+flate2 = "1"
+glam = { workspace = true, features = ["serde"] }
+gltf = "1"
+rmp-serde = { version = "1" }
+serde = { workspace = true, features = ["derive"] }
+shared = { workspace = true }
+spirv-std = { workspace = true }

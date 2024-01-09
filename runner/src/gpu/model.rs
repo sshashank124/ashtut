@@ -1,6 +1,6 @@
 use super::{
     context::Context,
-    image::{format, Image},
+    image::{Format, Image},
     scope::OneshotScope,
     texture::Texture,
     Destroy,
@@ -8,7 +8,7 @@ use super::{
 
 pub struct Model {
     pub texture_image: image::RgbaImage,
-    pub texture: Texture<{ format::COLOR }>,
+    pub texture: Texture<{ Format::Color }>,
 }
 
 impl Model {
@@ -34,7 +34,7 @@ impl Model {
         ctx: &mut Context,
         scope: &mut OneshotScope,
         texture_image: &image::RgbaImage,
-    ) -> Texture<{ format::COLOR }> {
+    ) -> Texture<{ Format::Color }> {
         let image = Image::create_from_image(ctx, scope, "Texture", texture_image);
         Texture::from_image(ctx, image)
     }

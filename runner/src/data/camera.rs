@@ -1,4 +1,4 @@
-use shared::{glam, Camera, Transform};
+use shared::{Camera, Transform};
 
 mod conf {
     pub const Z_NEAR: f32 = 1e-1;

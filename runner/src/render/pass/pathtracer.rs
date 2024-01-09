@@ -4,7 +4,8 @@ use std::{
 };
 
 use ash::vk;
-use shared::{bytemuck, PathtracerConstants};
+
+use shared::PathtracerConstants;
 
 use crate::gpu::{
     acceleration_structure::AccelerationStructures,
@@ -223,7 +224,7 @@ impl Pipeline {
             .iter()
             .copied()
             .zip(data.descriptors.sets.iter().copied())
-            .map(|(a, b)| [a, b]);
+            .map(<[vk::DescriptorSet; 2]>::from);
 
         let pipeline = pipeline::Pipeline::new(
             ctx,

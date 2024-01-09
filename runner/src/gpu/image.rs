@@ -1,17 +1,29 @@
-use std::{ops::Deref, slice};
+use std::{marker::ConstParamTy, ops::Deref, slice};
 
 use ash::vk;
 
 use super::{alloc, buffer::Buffer, context::Context, scope::OneshotScope, Destroy};
 
-pub mod format {
-    pub const HDR: ash::vk::Format = ash::vk::Format::R32G32B32A32_SFLOAT;
-    pub const COLOR: ash::vk::Format = ash::vk::Format::R8G8B8A8_SRGB;
-    pub const DEPTH: ash::vk::Format = ash::vk::Format::D32_SFLOAT;
-    pub const SWAPCHAIN: ash::vk::Format = ash::vk::Format::UNDEFINED;
+#[derive(PartialEq, Eq, ConstParamTy)]
+pub enum Format {
+    Hdr,
+    Color,
+    Depth,
+    Swapchain,
 }
 
-pub struct Image<const FORMAT: vk::Format> {
+impl From<Format> for vk::Format {
+    fn from(format: Format) -> Self {
+        match format {
+            Format::Hdr => Self::R32G32B32A32_SFLOAT,
+            Format::Color => Self::R8G8B8A8_SRGB,
+            Format::Depth => Self::D32_SFLOAT,
+            Format::Swapchain => Self::UNDEFINED,
+        }
+    }
+}
+
+pub struct Image<const FORMAT: Format> {
     pub image: vk::Image,
     pub view: vk::ImageView,
     allocation: Option<alloc::Allocation>,
@@ -23,8 +35,8 @@ pub struct BarrierInfo {
     access: vk::AccessFlags,
 }
 
-impl<const FORMAT: vk::Format> Image<FORMAT> {
-    pub fn new(
+impl<const FORMAT: Format> Image<FORMAT> {
+    pub fn new_of_format(
         ctx: &Context,
         image: vk::Image,
         format: vk::Format,
@@ -50,6 +62,10 @@ impl<const FORMAT: vk::Format> Image<FORMAT> {
         }
     }
 
+    pub fn new(ctx: &Context, image: vk::Image, allocation: Option<alloc::Allocation>) -> Self {
+        Self::new_of_format(ctx, image, FORMAT.into(), allocation)
+    }
+
     pub fn create(
         ctx: &mut Context,
         scope: &OneshotScope,
@@ -64,7 +80,7 @@ impl<const FORMAT: vk::Format> Image<FORMAT> {
             samples: vk::SampleCountFlags::TYPE_1,
             initial_layout: vk::ImageLayout::UNDEFINED,
             tiling: vk::ImageTiling::OPTIMAL,
-            format: FORMAT,
+            format: FORMAT.into(),
             usage: Self::usage_flags() | info.usage,
             ..*info
         };
@@ -94,7 +110,7 @@ impl<const FORMAT: vk::Format> Image<FORMAT> {
                 .expect("Failed to bind memory");
         }
 
-        let image = Self::new(ctx, image, FORMAT, Some(allocation));
+        let image = Self::new(ctx, image, Some(allocation));
 
         if let Some(to) = to {
             image.transition_layout(ctx, scope, &BarrierInfo::INIT, to);
@@ -145,20 +161,20 @@ impl<const FORMAT: vk::Format> Image<FORMAT> {
 
     const fn usage_flags() -> vk::ImageUsageFlags {
         match FORMAT {
-            format::DEPTH => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+            Format::Depth => vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
             _ => vk::ImageUsageFlags::SAMPLED,
         }
     }
 
     const fn aspect_flags() -> vk::ImageAspectFlags {
         match FORMAT {
-            format::DEPTH => vk::ImageAspectFlags::DEPTH,
+            Format::Depth => vk::ImageAspectFlags::DEPTH,
             _ => vk::ImageAspectFlags::COLOR,
         }
     }
 }
 
-impl Image<{ format::COLOR }> {
+impl Image<{ Format::Color }> {
     pub fn create_from_image(
         ctx: &mut Context,
         scope: &mut OneshotScope,
@@ -247,7 +263,7 @@ impl BarrierInfo {
     };
 }
 
-impl<const FORMAT: vk::Format> Destroy<Context> for Image<FORMAT> {
+impl<const FORMAT: Format> Destroy<Context> for Image<FORMAT> {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         ctx.destroy_image_view(self.view, None);
         if let Some(allocation) = self.allocation.take() {
@@ -259,7 +275,7 @@ impl<const FORMAT: vk::Format> Destroy<Context> for Image<FORMAT> {
     }
 }
 
-impl<const FORMAT: vk::Format> Deref for Image<FORMAT> {
+impl<const FORMAT: Format> Deref for Image<FORMAT> {
     type Target = vk::Image;
     fn deref(&self) -> &Self::Target {
         &self.image

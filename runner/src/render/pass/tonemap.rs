@@ -6,8 +6,7 @@ use crate::gpu::{
     context::Context,
     descriptors::Descriptors,
     framebuffers::{self, Framebuffers},
-    image::{format, Image},
-    pipeline,
+    image, pipeline,
     sampler::Sampler,
     sync_info::SyncInfo,
     Destroy,
@@ -25,7 +24,7 @@ mod conf {
 
 pub struct Data {
     descriptors: Descriptors,
-    input_image: Image<{ format::HDR }>,
+    input_image: image::Image<{ image::Format::Hdr }>,
     sampler: Sampler,
 }
 
@@ -39,7 +38,7 @@ impl Data {
     pub fn create(ctx: &Context, common: &common::Data) -> Self {
         let descriptors = Self::create_descriptors(ctx);
 
-        let input_image = Image::new(ctx, common.target.image, format::HDR, None);
+        let input_image = image::Image::new(ctx, common.target.image, None);
 
         let data = Self {
             descriptors,
@@ -114,7 +113,7 @@ impl Data {
 }
 
 impl Pipeline {
-    pub fn create(ctx: &mut Context, common: &common::Data) -> Self {
+    pub fn create(ctx: &Context, common: &common::Data) -> Self {
         let data = Data::create(ctx, common);
 
         let render_pass = Self::create_render_pass(ctx);
@@ -151,7 +150,7 @@ impl Pipeline {
                 .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
                 .build(),
             vk::AttachmentDescription::builder()
-                .format(format::DEPTH)
+                .format(image::Format::Depth.into())
                 .samples(vk::SampleCountFlags::TYPE_1)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::DONT_CARE)
@@ -295,7 +294,7 @@ impl Pipeline {
         ctx: &Context,
         idx: usize,
         sync_info: &SyncInfo,
-        output_to: &Framebuffers<{ format::SWAPCHAIN }>,
+        output_to: &Framebuffers<{ image::Format::Swapchain }>,
     ) {
         let commands = self.pipeline.begin_pipeline(ctx, idx);
 

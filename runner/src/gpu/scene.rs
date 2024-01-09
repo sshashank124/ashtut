@@ -1,50 +1,47 @@
 use ash::vk;
 
-use shared::{self, bytemuck};
-
 use super::{buffer::Buffer, context::Context, scope::OneshotScope, Destroy};
-use crate::data::gltf_scene;
 
 pub struct Scene {
     pub indices: Buffer,
     pub vertices: Buffer,
-    pub materials: Buffer,
     pub primitives: Buffer,
-    pub host_info: gltf_scene::Info,
-    pub device_info: shared::SceneInfo,
+    pub materials: Buffer,
+    pub host_info: scene::Info,
+    pub device_addresses: DeviceAddresses,
+}
+
+pub struct DeviceAddresses {
+    pub indices: u64,
+    pub vertices: u64,
 }
 
 impl Scene {
-    pub fn create(
-        ctx: &mut Context,
-        scope: &mut OneshotScope,
-        scene: gltf_scene::GltfScene,
-    ) -> Self {
+    pub fn create(ctx: &mut Context, scope: &mut OneshotScope, scene: scene::Scene) -> Self {
         let (vertices, indices) = Self::init_vertex_index_buffer(ctx, scope, &scene.data);
-        let materials = Self::init_materials_buffer(ctx, scope, &scene.data);
         let primitives = Self::init_primitives_buffer(ctx, scope, &scene.info);
+        let materials = Self::init_materials_buffer(ctx, scope, &scene.data);
 
         let host_info = scene.info;
-        let device_info = shared::SceneInfo {
-            indices_address: indices.get_device_address(ctx),
-            vertices_address: vertices.get_device_address(ctx),
+        let device_addresses = DeviceAddresses {
+            indices: indices.get_device_address(ctx),
+            vertices: vertices.get_device_address(ctx),
         };
 
         Self {
             indices,
             vertices,
-            materials,
             primitives,
-
+            materials,
             host_info,
-            device_info,
+            device_addresses,
         }
     }
 
     fn init_vertex_index_buffer(
         ctx: &mut Context,
         scope: &mut OneshotScope,
-        scene: &gltf_scene::Data,
+        scene: &scene::Data,
     ) -> (Buffer, Buffer) {
         let vertices = {
             let create_info = vk::BufferCreateInfo::builder().usage(
@@ -86,7 +83,7 @@ impl Scene {
     fn init_primitives_buffer(
         ctx: &mut Context,
         scope: &mut OneshotScope,
-        scene: &gltf_scene::Info,
+        scene: &scene::Info,
     ) -> Buffer {
         let create_info =
             vk::BufferCreateInfo::builder().usage(vk::BufferUsageFlags::STORAGE_BUFFER);
@@ -103,7 +100,7 @@ impl Scene {
     fn init_materials_buffer(
         ctx: &mut Context,
         scope: &mut OneshotScope,
-        scene: &gltf_scene::Data,
+        scene: &scene::Data,
     ) -> Buffer {
         let create_info =
             vk::BufferCreateInfo::builder().usage(vk::BufferUsageFlags::STORAGE_BUFFER);

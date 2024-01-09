@@ -73,7 +73,7 @@ impl Device {
         unsafe {
             self.device
                 .create_semaphore(&create_info, None)
-                .unwrap_or_else(|err| panic!("Failed to create `{}` semaphore: {}", name, err))
+                .unwrap_or_else(|err| panic!("Failed to create `{name}` semaphore: {err}"))
         }
     }
 
@@ -86,7 +86,7 @@ impl Device {
         unsafe {
             self.device
                 .create_fence(&create_info, None)
-                .unwrap_or_else(|err| panic!("Failed to create `{}` fence: {}", name, err))
+                .unwrap_or_else(|err| panic!("Failed to create `{name}` fence: {err}"))
         }
     }
 

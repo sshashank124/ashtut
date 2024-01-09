@@ -2,27 +2,18 @@ use std::slice;
 
 use ash::vk;
 
-use crate::gpu::{
-    context::Context,
-    framebuffers::Framebuffers,
-    image::{format, Image},
-    Destroy,
-};
+use crate::gpu::{context::Context, framebuffers::Framebuffers, image, Destroy};
 
 use super::scope::OneshotScope;
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
-    images: Vec<Image<{ format::SWAPCHAIN }>>,
-    pub target: Framebuffers<{ format::SWAPCHAIN }>,
+    images: Vec<image::Image<{ image::Format::Swapchain }>>,
+    pub target: Framebuffers<{ image::Format::Swapchain }>,
 }
 
 impl Swapchain {
-    pub fn create(
-        ctx: &mut Context,
-        scope: &mut OneshotScope,
-        render_pass: vk::RenderPass,
-    ) -> Self {
+    pub fn create(ctx: &mut Context, scope: &OneshotScope, render_pass: vk::RenderPass) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(**ctx.surface)
             .min_image_count(ctx.surface.config.image_count)
@@ -51,7 +42,9 @@ impl Swapchain {
                 .expect("Failed to get swapchain images")
         }
         .into_iter()
-        .map(|image| Image::new(ctx, image, ctx.surface.config.surface_format.format, None))
+        .map(|image| {
+            image::Image::new_of_format(ctx, image, ctx.surface.config.surface_format.format, None)
+        })
         .collect::<Vec<_>>();
 
         let target = Framebuffers::create(

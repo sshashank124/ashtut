@@ -1,16 +1,19 @@
 [package]
 name = "runner"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 
 [dependencies]
 ash = { version = "0.37", features = ["linked"] }
-gltf = "1"
+bytemuck = { workspace = true }
+glam = { workspace = true }
 gpu-allocator = { version = "0.23", default-features = false, features = [ "vulkan" ] }
 image = "0.24"
-shared = { path = "../shared" }
+scene = { workspace = true }
+shared = { workspace = true }
+spirv-std = { workspace = true }
 tobj = "4"
 winit = "0.29"
 
 [build-dependencies]
-spirv-builder = "0.9"
+spirv-builder = { workspace = true }

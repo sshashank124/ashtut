@@ -1,6 +1,9 @@
-#![cfg_attr(target_arch = "spirv", no_std)]
+#![no_std]
 
-use shared::{glam::Vec4, spirv_std::spirv, Material, RasterizerConstants, Uniforms, Vertex};
+use glam::Vec4;
+
+use shared::{scene::Material, RasterizerConstants, Uniforms, Vertex};
+use spirv_std::spirv;
 
 #[spirv(vertex)]
 pub fn vert_main(
@@ -9,8 +12,8 @@ pub fn vert_main(
     vertex: Vertex,
     #[spirv(position, invariant)] position: &mut Vec4,
 ) {
-    *position = uniforms.camera.proj
-        * (uniforms.camera.view * constants.model_transform * vertex.position.extend(1.0));
+    *position =
+        uniforms.camera.proj * (uniforms.camera.view * constants.model_transform * vertex.position);
 }
 
 #[spirv(fragment)]

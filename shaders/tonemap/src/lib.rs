@@ -1,14 +1,12 @@
-#![cfg_attr(target_arch = "spirv", no_std)]
+#![no_std]
 
-use shared::{
+use spirv_std::{
     glam::{vec2, Vec2, Vec4},
-    spirv_std::{
-        image::{Image2d, SampledImage},
-        spirv,
-    },
+    image::{Image2d, SampledImage},
+    spirv,
 };
 
-const GAMMA: f32 = 1.0 / 2.2;
+const GAMMA: f32 = 1. / 2.2;
 
 #[spirv(vertex)]
 pub fn vert_main(
@@ -17,7 +15,7 @@ pub fn vert_main(
     uv: &mut Vec2,
 ) {
     *uv = vec2(((vertex_index << 1) & 2) as f32, (vertex_index & 2) as f32);
-    *position = (*uv * 2.0 - 1.0).extend(0.0).extend(1.0);
+    *position = (2. * *uv - 1.).extend(0.).extend(1.);
 }
 
 #[spirv(fragment)]

@@ -1,13 +1,13 @@
 use std::slice;
 
 use ash::vk;
-use shared::{bytemuck, RasterizerConstants, Vertex};
+
+use shared::{RasterizerConstants, Vertex};
 
 use crate::gpu::{
     context::Context,
     framebuffers::{self, Framebuffers},
-    image::format,
-    pipeline,
+    image, pipeline,
     scope::OneshotScope,
     sync_info::SyncInfo,
     Destroy,
@@ -25,12 +25,12 @@ pub mod conf {
 
 pub struct Pipeline {
     pub render_pass: vk::RenderPass,
-    pub target: Framebuffers<{ format::HDR }>,
+    pub target: Framebuffers<{ image::Format::Hdr }>,
     pipeline: pipeline::Pipeline<1>,
 }
 
 impl Pipeline {
-    pub fn create(ctx: &mut Context, scope: &mut OneshotScope, common: &common::Data) -> Self {
+    pub fn create(ctx: &mut Context, scope: &OneshotScope, common: &common::Data) -> Self {
         let render_pass = Self::create_render_pass(ctx);
 
         let target = Framebuffers::create(
@@ -65,7 +65,7 @@ impl Pipeline {
     fn create_render_pass(ctx: &Context) -> vk::RenderPass {
         let attachments = [
             vk::AttachmentDescription::builder()
-                .format(format::HDR)
+                .format(image::Format::Hdr.into())
                 .samples(vk::SampleCountFlags::TYPE_1)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::STORE)
@@ -75,7 +75,7 @@ impl Pipeline {
                 .final_layout(vk::ImageLayout::GENERAL)
                 .build(),
             vk::AttachmentDescription::builder()
-                .format(format::DEPTH)
+                .format(image::Format::Depth.into())
                 .samples(vk::SampleCountFlags::TYPE_1)
                 .load_op(vk::AttachmentLoadOp::CLEAR)
                 .store_op(vk::AttachmentStoreOp::DONT_CARE)
@@ -229,7 +229,7 @@ impl Pipeline {
 
     fn vertex_binding_info() -> (
         [vk::VertexInputBindingDescription; 1],
-        [vk::VertexInputAttributeDescription; 3],
+        [vk::VertexInputAttributeDescription; 5],
     ) {
         let bindings = [vk::VertexInputBindingDescription {
             binding: 0,
@@ -255,6 +255,18 @@ impl Pipeline {
                 location: 2,
                 format: vk::Format::R32G32_SFLOAT,
                 offset: bytemuck::offset_of!(Vertex, tex_coord) as _,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 3,
+                format: vk::Format::R32_UINT,
+                offset: bytemuck::offset_of!(Vertex, _pad0) as _,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 4,
+                format: vk::Format::R32_UINT,
+                offset: bytemuck::offset_of!(Vertex, _pad1) as _,
             },
         ];
 
@@ -304,6 +316,7 @@ impl Pipeline {
             let push_constants = RasterizerConstants {
                 model_transform: instance.transform,
                 material_index: scene_info.primitive_infos[instance.primitive_index].material,
+                ..Default::default()
             };
 
             unsafe {

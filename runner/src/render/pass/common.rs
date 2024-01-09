@@ -2,29 +2,21 @@ use std::slice;
 
 use ash::vk;
 
-use crate::{
-    data::gltf_scene,
-    gpu::{
-        context::Context,
-        descriptors::Descriptors,
-        image::{format, BarrierInfo, Image},
-        scene::Scene,
-        scope::OneshotScope,
-        uniforms::Uniforms,
-        Destroy,
-    },
+use crate::gpu::{
+    context::Context, descriptors::Descriptors, image, scene::Scene, scope::OneshotScope,
+    uniforms::Uniforms, Destroy,
 };
 
 pub struct Data {
     pub descriptors: Descriptors,
-    pub target: Image<{ format::HDR }>,
+    pub target: image::Image<{ image::Format::Hdr }>,
     pub resolution: vk::Extent2D,
     pub uniforms: Uniforms,
     pub scene: Scene,
 }
 
 impl Data {
-    pub fn create(ctx: &mut Context, scene: gltf_scene::GltfScene) -> Self {
+    pub fn create(ctx: &mut Context, scene: scene::Scene) -> Self {
         let descriptors = Self::create_descriptors(ctx);
 
         let resolution = vk::Extent2D {
@@ -40,12 +32,12 @@ impl Data {
                 usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::STORAGE,
                 ..Default::default()
             };
-            Image::create(
+            image::Image::create(
                 ctx,
                 &init_scope,
                 "Intermediate Target",
                 &info,
-                Some(&BarrierInfo::GENERAL),
+                Some(&image::BarrierInfo::GENERAL),
             )
         };
 

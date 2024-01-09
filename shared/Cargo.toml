@@ -1,8 +1,16 @@
 [package]
 name = "shared"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 
 [dependencies]
-bytemuck = { version = "1.14", features = ["derive"] }
-spirv-std = "0.9"
+spirv-std = { workspace = true }
+
+[target.'cfg(target_arch = "spirv")'.dependencies]
+glam = { workspace = true }
+serde = { workspace = true }
+
+[target.'cfg(not(target_arch = "spirv"))'.dependencies]
+bytemuck = { workspace = true }
+glam = { workspace = true, features = ["bytemuck", "serde"] }
+serde = { workspace = true, features = ["derive"] }

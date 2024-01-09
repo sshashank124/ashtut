@@ -9,7 +9,7 @@ use winit::{
 };
 
 use crate::{
-    data::{camera, gltf_scene::GltfScene},
+    data::camera,
     gpu::{context::Context, Destroy},
     input, render,
 };
@@ -31,10 +31,10 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(window: &Window, gltf_file: &str) -> Self {
+    pub fn new(window: &Window, scene_file: &str) -> Self {
         let mut ctx = Context::init(window);
 
-        let scene = GltfScene::load(gltf_file);
+        let scene = scene::load(scene_file);
 
         let camera_controller = camera::Controller::new(
             scene.info.bounding_box.size() * 1.2 + scene.info.bounding_box.center(),

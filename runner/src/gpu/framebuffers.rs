@@ -1,11 +1,6 @@
 use ash::vk;
 
-use super::{
-    context::Context,
-    image::{format, Image},
-    scope::OneshotScope,
-    Destroy,
-};
+use super::{context::Context, image, scope::OneshotScope, Destroy};
 
 pub const CLEAR_VALUES: &[vk::ClearValue] = &[
     vk::ClearValue {
@@ -21,26 +16,26 @@ pub const CLEAR_VALUES: &[vk::ClearValue] = &[
     },
 ];
 
-pub struct Framebuffers<const FORMAT: vk::Format> {
-    pub depth: Image<{ format::DEPTH }>,
+pub struct Framebuffers<const FORMAT: image::Format> {
+    pub depth: image::Image<{ image::Format::Depth }>,
     pub framebuffers: Vec<vk::Framebuffer>,
 }
 
-impl<const FORMAT: vk::Format> Framebuffers<{ FORMAT }> {
+impl<const FORMAT: image::Format> Framebuffers<{ FORMAT }> {
     pub fn create(
         ctx: &mut Context,
-        scope: &mut OneshotScope,
+        scope: &OneshotScope,
         name: &str,
         render_pass: vk::RenderPass,
         resolution: vk::Extent2D,
-        colors: &[Image<{ FORMAT }>],
+        colors: &[image::Image<{ FORMAT }>],
     ) -> Self {
         let depth = {
             let info = vk::ImageCreateInfo {
                 extent: resolution.into(),
                 ..Default::default()
             };
-            Image::create(ctx, scope, &format!("{name} [DEPTH]"), &info, None)
+            image::Image::create(ctx, scope, &format!("{name} [DEPTH]"), &info, None)
         };
 
         let framebuffers = colors
@@ -65,7 +60,7 @@ impl<const FORMAT: vk::Format> Framebuffers<{ FORMAT }> {
     }
 }
 
-impl<const FORMAT: vk::Format> Destroy<Context> for Framebuffers<{ FORMAT }> {
+impl<const FORMAT: image::Format> Destroy<Context> for Framebuffers<{ FORMAT }> {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         self.framebuffers
             .iter()

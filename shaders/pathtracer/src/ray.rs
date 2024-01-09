@@ -1,4 +1,4 @@
-use shared::glam::*;
+use glam::*;
 
 use super::rand::Rng;
 

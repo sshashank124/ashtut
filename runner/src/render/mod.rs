@@ -3,11 +3,8 @@ mod sync_state;
 
 use std::slice;
 
-use crate::{
-    data::gltf_scene::GltfScene,
-    gpu::{
-        context::Context, scope::OneshotScope, swapchain::Swapchain, sync_info::SyncInfo, Destroy,
-    },
+use crate::gpu::{
+    context::Context, scope::OneshotScope, swapchain::Swapchain, sync_info::SyncInfo, Destroy,
 };
 
 use self::{
@@ -39,18 +36,18 @@ pub enum Error {
 }
 
 impl Renderer {
-    pub fn create(ctx: &mut Context, scene: GltfScene, camera: shared::Camera) -> Self {
+    pub fn create(ctx: &mut Context, scene: scene::Scene, camera: shared::Camera) -> Self {
         let mut common = common::Data::create(ctx, scene);
         let uniforms = shared::Uniforms { camera };
         common.uniforms.update(&uniforms);
 
         let pathtracer_pipeline = pathtracer::Pipeline::create(ctx, &common);
 
-        let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.transfer());
+        let init_scope = OneshotScope::begin_on(ctx, ctx.queues.transfer());
 
-        let rasterizer_pipeline = rasterizer::Pipeline::create(ctx, &mut init_scope, &common);
+        let rasterizer_pipeline = rasterizer::Pipeline::create(ctx, &init_scope, &common);
         let tonemap_pipeline = tonemap::Pipeline::create(ctx, &common);
-        let swapchain = Swapchain::create(ctx, &mut init_scope, tonemap_pipeline.render_pass);
+        let swapchain = Swapchain::create(ctx, &init_scope, tonemap_pipeline.render_pass);
 
         init_scope.finish(ctx);
 
@@ -141,8 +138,8 @@ impl Renderer {
         unsafe {
             self.swapchain.destroy_with(ctx);
         }
-        let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.transfer());
-        self.swapchain = Swapchain::create(ctx, &mut init_scope, self.tonemap_pipeline.render_pass);
+        let init_scope = OneshotScope::begin_on(ctx, ctx.queues.transfer());
+        self.swapchain = Swapchain::create(ctx, &init_scope, self.tonemap_pipeline.render_pass);
         init_scope.finish(ctx);
     }
 }

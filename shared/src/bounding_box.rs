@@ -1,6 +1,8 @@
-use shared::glam;
+#[cfg(not(target_arch = "spirv"))]
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
+#[cfg_attr(not(target_arch = "spirv"), derive(Deserialize, Serialize))]
 pub struct BoundingBox {
     pub min: glam::Vec3,
     pub max: glam::Vec3,

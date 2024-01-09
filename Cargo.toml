@@ -5,13 +5,24 @@ members = [
     "shaders/pathtracer",
     "shaders/rasterizer",
     "shaders/tonemap",
+    "scene",
 ]
+resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 authors = ["Shashank Singh <sshashank124@gmail.com>"]
 repository = "https://github.com/sshashank124/tsunami"
+
+[workspace.dependencies]
+bytemuck = { version = "1.14", features = ["derive"] }
+glam = { version = "0.24", default-features = false, features = ["libm"] }
+scene = { path = "scene" }
+serde = { version = "1.0", default-features = false }
+shared = { path = "shared" }
+spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu" }
+spirv-builder = { git = "https://github.com/EmbarkStudios/rust-gpu" }
 
 [profile.release]
 opt-level = 3

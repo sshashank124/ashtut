@@ -1,35 +1,40 @@
 #![cfg_attr(target_arch = "spirv", no_std)]
 
+pub mod bounding_box;
+pub mod scene;
+
 use core::ops::{Div, Mul};
 
-pub use bytemuck;
-pub use spirv_std;
-pub use spirv_std::glam;
-
-use glam::{Mat4, Vec2, Vec3A, Vec4};
+#[cfg(not(target_arch = "spirv"))]
+use serde::{Deserialize, Serialize};
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
+#[cfg_attr(not(target_arch = "spirv"), derive(bytemuck::Pod, bytemuck::Zeroable))]
 pub struct RasterizerConstants {
-    pub model_transform: Mat4,
+    pub model_transform: glam::Mat4,
     pub material_index: u32,
+    pub _pad0: u32,
+    pub _pad1: u32,
+    pub _pad2: u32,
 }
-unsafe impl bytemuck::Zeroable for RasterizerConstants {}
-unsafe impl bytemuck::Pod for RasterizerConstants {}
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Default)]
+#[cfg_attr(not(target_arch = "spirv"), derive(bytemuck::Pod, bytemuck::Zeroable))]
 pub struct PathtracerConstants {
     pub frame: u32,
 }
 #[repr(C)]
-#[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Default)]
+#[cfg_attr(not(target_arch = "spirv"), derive(bytemuck::Pod, bytemuck::Zeroable))]
 pub struct Uniforms {
     pub camera: Camera,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Default)]
+#[cfg_attr(not(target_arch = "spirv"), derive(bytemuck::Pod, bytemuck::Zeroable))]
 pub struct Camera {
     pub view: Transform,
     pub proj: Transform,
@@ -37,53 +42,33 @@ pub struct Camera {
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
+#[cfg_attr(
+    not(target_arch = "spirv"),
+    derive(bytemuck::Pod, bytemuck::Zeroable, Deserialize, Serialize)
+)]
 pub struct Vertex {
-    pub position: Vec3A,
-    pub normal: Vec3A,
-    pub tex_coord: Vec2,
+    pub position: glam::Vec4,
+    pub normal: glam::Vec4,
+    pub tex_coord: glam::Vec2,
+    pub _pad0: u32,
+    pub _pad1: u32,
 }
-unsafe impl bytemuck::Zeroable for Vertex {}
-unsafe impl bytemuck::Pod for Vertex {}
 
 #[repr(C)]
 #[derive(Copy, Clone, Default)]
+#[cfg_attr(not(target_arch = "spirv"), derive(bytemuck::Pod, bytemuck::Zeroable))]
 pub struct Transform {
-    pub forward: Mat4,
-    pub inverse: Mat4,
-}
-unsafe impl bytemuck::Zeroable for Transform {}
-unsafe impl bytemuck::Pod for Transform {}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct PrimitiveInfo {
-    pub indices_offset: u32,
-    pub vertices_offset: u32,
-    pub material: u32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Default)]
-pub struct Material {
-    pub color: Vec4,
-    pub emittance: Vec4,
-}
-unsafe impl bytemuck::Zeroable for Material {}
-unsafe impl bytemuck::Pod for Material {}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct SceneInfo {
-    pub indices_address: u64,
-    pub vertices_address: u64,
+    pub forward: glam::Mat4,
+    pub inverse: glam::Mat4,
 }
 
 impl Vertex {
     pub fn new(position: &[f32], normal: &[f32], tex_coord: &[f32]) -> Self {
         Self {
-            position: Vec3A::from_slice(position),
-            normal: Vec3A::from_slice(normal),
-            tex_coord: Vec2::from_slice(tex_coord),
+            position: glam::Vec3::from_slice(position).extend(1.0),
+            normal: glam::Vec3::from_slice(normal).extend(1.0),
+            tex_coord: glam::Vec2::from_slice(tex_coord),
+            ..Default::default()
         }
     }
 }
@@ -96,14 +81,14 @@ impl From<RawData> for Vertex {
 }
 
 impl Transform {
-    pub fn new(mat: Mat4) -> Self {
+    pub fn new(mat: glam::Mat4) -> Self {
         Self {
             forward: mat,
             inverse: mat.inverse(),
         }
     }
 
-    pub fn proj(mut mat: Mat4) -> Self {
+    pub fn proj(mut mat: glam::Mat4) -> Self {
         mat.y_axis.y *= -1.;
         Self::new(mat)
     }
@@ -111,9 +96,9 @@ impl Transform {
 
 impl<T> Mul<T> for Transform
 where
-    Mat4: Mul<T>,
+    glam::Mat4: Mul<T>,
 {
-    type Output = <Mat4 as Mul<T>>::Output;
+    type Output = <glam::Mat4 as Mul<T>>::Output;
     fn mul(self, rhs: T) -> Self::Output {
         self.forward * rhs
     }
@@ -121,9 +106,9 @@ where
 
 impl<T> Div<T> for Transform
 where
-    Mat4: Mul<T>,
+    glam::Mat4: Mul<T>,
 {
-    type Output = <Mat4 as Mul<T>>::Output;
+    type Output = <glam::Mat4 as Mul<T>>::Output;
 
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn div(self, rhs: T) -> Self::Output {
