@@ -1,4 +1,6 @@
 #version 460
+#extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_scalar_block_layout : require
 
 #include "common.glsl"
 
@@ -6,12 +8,13 @@ layout(push_constant) uniform Constants {
   RasterizerConstants constants;
 };
 
-layout(std430, binding=1) buffer MaterialBuffer {
-  Material materials[];
-};
+layout(set=0, binding=1) uniform _SceneDesc { SceneDesc scene_desc; };
 
 layout(location=0) out vec4 color;
 
+layout(buffer_reference, scalar) buffer Materials { Material m[]; };
+
 void main() {
-  color = materials[constants.material_index].color;
+  Materials materials = Materials(scene_desc.materials_address);
+  color = materials.m[constants.material_index].color;
 }

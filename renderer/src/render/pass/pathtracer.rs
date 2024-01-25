@@ -61,24 +61,6 @@ impl Data {
                     .descriptor_count(1)
                     .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR)
                     .build(),
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(2)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::CLOSEST_HIT_KHR)
-                    .build(),
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(3)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::CLOSEST_HIT_KHR)
-                    .build(),
-                vk::DescriptorSetLayoutBinding::builder()
-                    .binding(4)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::CLOSEST_HIT_KHR)
-                    .build(),
             ];
             let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
             unsafe {
@@ -95,18 +77,6 @@ impl Data {
                     .build(),
                 vk::DescriptorPoolSize::builder()
                     .ty(vk::DescriptorType::STORAGE_IMAGE)
-                    .descriptor_count(1)
-                    .build(),
-                vk::DescriptorPoolSize::builder()
-                    .ty(vk::DescriptorType::STORAGE_BUFFER)
-                    .descriptor_count(1)
-                    .build(),
-                vk::DescriptorPoolSize::builder()
-                    .ty(vk::DescriptorType::STORAGE_BUFFER)
-                    .descriptor_count(1)
-                    .build(),
-                vk::DescriptorPoolSize::builder()
-                    .ty(vk::DescriptorType::STORAGE_BUFFER)
                     .descriptor_count(1)
                     .build(),
             ];
@@ -140,18 +110,6 @@ impl Data {
             .image_layout(vk::ImageLayout::GENERAL)
             .image_view(common.target.view);
 
-        let indices_info = vk::DescriptorBufferInfo::builder()
-            .buffer(*common.scene.indices)
-            .range(vk::WHOLE_SIZE);
-
-        let vertices_info = vk::DescriptorBufferInfo::builder()
-            .buffer(*common.scene.vertices)
-            .range(vk::WHOLE_SIZE);
-
-        let primitives_info = vk::DescriptorBufferInfo::builder()
-            .buffer(*common.scene.primitives)
-            .range(vk::WHOLE_SIZE);
-
         for &set in &self.descriptors.sets {
             let mut accel_write = vk::WriteDescriptorSet::builder()
                 .dst_set(set)
@@ -168,24 +126,6 @@ impl Data {
                     .dst_binding(1)
                     .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
                     .image_info(slice::from_ref(&target_info))
-                    .build(),
-                vk::WriteDescriptorSet::builder()
-                    .dst_set(set)
-                    .dst_binding(2)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(slice::from_ref(&indices_info))
-                    .build(),
-                vk::WriteDescriptorSet::builder()
-                    .dst_set(set)
-                    .dst_binding(3)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(slice::from_ref(&vertices_info))
-                    .build(),
-                vk::WriteDescriptorSet::builder()
-                    .dst_set(set)
-                    .dst_binding(4)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(slice::from_ref(&primitives_info))
                     .build(),
             ];
 

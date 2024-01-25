@@ -7,13 +7,9 @@ pub struct Scene {
     pub vertices: Buffer,
     pub primitives: Buffer,
     pub materials: Buffer,
+    pub scene_desc: Buffer,
     pub host_info: scene::Info,
-    pub device_addresses: DeviceAddresses,
-}
-
-pub struct DeviceAddresses {
-    pub indices: u64,
-    pub vertices: u64,
+    pub device_info: scene::SceneDesc,
 }
 
 impl Scene {
@@ -22,19 +18,23 @@ impl Scene {
         let primitives = Self::init_primitives_buffer(ctx, scope, &scene.info);
         let materials = Self::init_materials_buffer(ctx, scope, &scene.data);
 
-        let host_info = scene.info;
-        let device_addresses = DeviceAddresses {
-            indices: indices.get_device_address(ctx),
-            vertices: vertices.get_device_address(ctx),
+        let device_info = scene::SceneDesc {
+            vertices_address: vertices.get_device_address(ctx),
+            indices_address: indices.get_device_address(ctx),
+            primitives_address: primitives.get_device_address(ctx),
+            materials_address: materials.get_device_address(ctx),
         };
+        let scene_desc = Self::init_scene_desc_buffer(ctx, scope, &device_info);
+        let host_info = scene.info;
 
         Self {
             indices,
             vertices,
             primitives,
             materials,
+            scene_desc,
             host_info,
-            device_addresses,
+            device_info,
         }
     }
 
@@ -85,8 +85,9 @@ impl Scene {
         scope: &mut OneshotScope,
         scene: &scene::Info,
     ) -> Buffer {
-        let create_info =
-            vk::BufferCreateInfo::builder().usage(vk::BufferUsageFlags::STORAGE_BUFFER);
+        let create_info = vk::BufferCreateInfo::builder().usage(
+            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+        );
 
         Buffer::create_with_staged_data(
             ctx,
@@ -102,8 +103,9 @@ impl Scene {
         scope: &mut OneshotScope,
         scene: &scene::Data,
     ) -> Buffer {
-        let create_info =
-            vk::BufferCreateInfo::builder().usage(vk::BufferUsageFlags::STORAGE_BUFFER);
+        let create_info = vk::BufferCreateInfo::builder().usage(
+            vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+        );
 
         Buffer::create_with_staged_data(
             ctx,
@@ -113,10 +115,28 @@ impl Scene {
             bytemuck::cast_slice(&scene.materials),
         )
     }
+
+    fn init_scene_desc_buffer(
+        ctx: &mut Context,
+        scope: &mut OneshotScope,
+        scene_desc: &scene::SceneDesc,
+    ) -> Buffer {
+        let create_info =
+            vk::BufferCreateInfo::builder().usage(vk::BufferUsageFlags::UNIFORM_BUFFER);
+
+        Buffer::create_with_staged_data(
+            ctx,
+            scope,
+            "Scene Desc Buffer",
+            *create_info,
+            bytemuck::bytes_of(scene_desc),
+        )
+    }
 }
 
 impl Destroy<Context> for Scene {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+        self.scene_desc.destroy_with(ctx);
         self.primitives.destroy_with(ctx);
         self.materials.destroy_with(ctx);
         self.vertices.destroy_with(ctx);

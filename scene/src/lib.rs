@@ -25,6 +25,15 @@ pub struct Info {
 }
 
 #[repr(C)]
+#[derive(Copy, Clone, Default, Pod, Zeroable)]
+pub struct SceneDesc {
+    pub vertices_address: u64,
+    pub indices_address: u64,
+    pub primitives_address: u64,
+    pub materials_address: u64,
+}
+
+#[repr(C)]
 #[derive(Copy, Clone, Default, Deserialize, Serialize, Pod, Zeroable)]
 pub struct Vertex {
     pub position: glam::Vec4,
@@ -59,12 +68,6 @@ pub struct Instance {
     pub transform: glam::Mat4,
 }
 
-impl PrimitiveSize {
-    pub const fn count(&self) -> u32 {
-        self.indices_size / 3
-    }
-}
-
 #[derive(Clone, Copy, Deserialize, Serialize)]
 pub struct BoundingBox {
     pub min: glam::Vec3,
@@ -85,6 +88,12 @@ type RawData = (([f32; 3], [f32; 3]), [f32; 2]); // ((position, normal), tex_coo
 impl From<RawData> for Vertex {
     fn from(((position, normal), tex_coord): RawData) -> Self {
         Self::new(&position, &normal, &tex_coord)
+    }
+}
+
+impl PrimitiveSize {
+    pub const fn count(&self) -> u32 {
+        self.indices_size / 3
     }
 }
 

@@ -1,3 +1,5 @@
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
+
 const float PI = 3.1415926535897932384626433832795;
 
 struct Transform {
@@ -17,13 +19,20 @@ struct Uniforms {
 struct Vertex {
   vec4 position;
   vec4 normal;
-  vec2 tex_coord;
+  vec4 tex_coords;
 };
 
 struct PrimitiveInfo {
   uint indices_offset;
   uint vertices_offset;
   uint material;
+};
+
+struct SceneDesc {
+  uint64_t vertices_address;
+  uint64_t indices_address;
+  uint64_t primitives_address;
+  uint64_t materials_address;
 };
 
 struct Material {

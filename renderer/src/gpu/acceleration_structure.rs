@@ -346,12 +346,12 @@ impl<'a> GeometryInfo<'a> {
             .vertex_stride(std::mem::size_of::<scene::Vertex>() as _)
             .max_vertex(primitive_size.vertices_size - 1)
             .vertex_data(vk::DeviceOrHostAddressConstKHR {
-                device_address: scene.device_addresses.vertices
+                device_address: scene.device_info.vertices_address
                     + bytemuck::offset_of!(scene::Vertex, position) as vk::DeviceAddress,
             })
             .index_type(vk::IndexType::UINT32)
             .index_data(vk::DeviceOrHostAddressConstKHR {
-                device_address: scene.device_addresses.indices,
+                device_address: scene.device_info.indices_address,
             })
             .build();
 

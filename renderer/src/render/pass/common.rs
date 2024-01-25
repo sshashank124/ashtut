@@ -69,7 +69,7 @@ impl Data {
                     .build(),
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(1)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                     .descriptor_count(1)
                     .stage_flags(
                         vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::CLOSEST_HIT_KHR,
@@ -90,7 +90,7 @@ impl Data {
                     .descriptor_count(1)
                     .build(),
                 vk::DescriptorPoolSize::builder()
-                    .ty(vk::DescriptorType::STORAGE_BUFFER)
+                    .ty(vk::DescriptorType::UNIFORM_BUFFER)
                     .descriptor_count(1)
                     .build(),
             ];
@@ -121,8 +121,8 @@ impl Data {
             .buffer(*self.uniforms.buffer)
             .range(vk::WHOLE_SIZE);
 
-        let materials_info = vk::DescriptorBufferInfo::builder()
-            .buffer(*self.scene.materials)
+        let scene_desc_info = vk::DescriptorBufferInfo::builder()
+            .buffer(*self.scene.scene_desc)
             .range(vk::WHOLE_SIZE);
 
         for &set in &self.descriptors.sets {
@@ -136,8 +136,8 @@ impl Data {
                 vk::WriteDescriptorSet::builder()
                     .dst_set(set)
                     .dst_binding(1)
-                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                    .buffer_info(slice::from_ref(&materials_info))
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                    .buffer_info(slice::from_ref(&scene_desc_info))
                     .build(),
             ];
 
