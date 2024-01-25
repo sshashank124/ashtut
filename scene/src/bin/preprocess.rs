@@ -1,6 +1,6 @@
 use std::{env, path::Path};
 
-use scene::{gltf::Gltf, FileLoader};
+use scene::loader::{self, gltf::Gltf, FileLoader};
 
 fn main() {
     let filename = env::args().nth(1).expect("No asset filename provided");
@@ -12,5 +12,5 @@ fn main() {
         panic!("No loader found");
     };
 
-    scene::save(&scene, filepath);
+    loader::save(&scene, filepath);
 }

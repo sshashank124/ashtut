@@ -1,32 +1,7 @@
-pub mod gltf;
+pub mod loader;
 
-use std::{
-    fs::File,
-    io::{BufReader, BufWriter},
-    path::Path,
-};
-
+use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
-
-use shared::{
-    bounding_box::BoundingBox,
-    scene::{Instance, Material, PrimitiveInfo, PrimitiveSize},
-    Vertex,
-};
-
-pub trait FileLoader {
-    const SUPPORTED_EXTENSIONS: &'static [&'static str];
-    fn load(filename: impl AsRef<Path>) -> Scene;
-
-    fn can_load(filename: impl AsRef<Path>) -> bool {
-        let extension = filename
-            .as_ref()
-            .extension()
-            .and_then(|s| s.to_str())
-            .expect("No file extension found");
-        Self::SUPPORTED_EXTENSIONS.contains(&extension)
-    }
-}
 
 #[derive(Deserialize, Serialize)]
 pub struct Scene {
@@ -49,24 +24,99 @@ pub struct Info {
     pub bounding_box: BoundingBox,
 }
 
-const FILE_EXTENSION: &str = "tsnasset";
-
-pub fn load(file: impl AsRef<Path>) -> Scene {
-    let filepath = file.as_ref();
-    assert!(
-        filepath.extension().unwrap_or_default() == FILE_EXTENSION,
-        "Asset must be preprocessed before loading"
-    );
-    let file = File::open(filepath).expect("Unable to open scene asset file");
-    let reader = flate2::bufread::GzDecoder::new(BufReader::new(file));
-    rmp_serde::decode::from_read(reader).expect("Failed to load scene asset")
+#[repr(C)]
+#[derive(Copy, Clone, Default, Deserialize, Serialize, Pod, Zeroable)]
+pub struct Vertex {
+    pub position: glam::Vec4,
+    pub normal: glam::Vec4,
+    pub tex_coords: glam::Vec4,
 }
 
-pub fn save(scene: &Scene, file: impl AsRef<Path>) {
-    let output_filename = file.as_ref().with_extension(FILE_EXTENSION);
-    let output_file = File::create(&output_filename).expect("Unable to open file for writing");
-    let mut writer =
-        flate2::write::GzEncoder::new(BufWriter::new(output_file), flate2::Compression::default());
-    rmp_serde::encode::write(&mut writer, &scene).expect("Failed to save processed asset");
-    println!("Asset processed and saved to {}", output_filename.display());
+#[repr(C)]
+#[derive(Clone, Copy, Default, Deserialize, Serialize, Pod, Zeroable)]
+pub struct Material {
+    pub color: glam::Vec4,
+    pub emittance: glam::Vec4,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default, Deserialize, Serialize, Pod, Zeroable)]
+pub struct PrimitiveInfo {
+    pub indices_offset: u32,
+    pub vertices_offset: u32,
+    pub material: u32,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct PrimitiveSize {
+    pub indices_size: u32,
+    pub vertices_size: u32,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Instance {
+    pub primitive_index: usize,
+    pub transform: glam::Mat4,
+}
+
+impl PrimitiveSize {
+    pub const fn count(&self) -> u32 {
+        self.indices_size / 3
+    }
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+pub struct BoundingBox {
+    pub min: glam::Vec3,
+    pub max: glam::Vec3,
+}
+
+impl Vertex {
+    pub fn new(position: &[f32], normal: &[f32], tex_coord: &[f32]) -> Self {
+        Self {
+            position: glam::Vec3::from_slice(position).extend(1.0),
+            normal: glam::Vec3::from_slice(normal).extend(1.0),
+            tex_coords: glam::Vec2::from_slice(tex_coord).extend(0.0).extend(0.0),
+        }
+    }
+}
+
+type RawData = (([f32; 3], [f32; 3]), [f32; 2]); // ((position, normal), tex_coord)
+impl From<RawData> for Vertex {
+    fn from(((position, normal), tex_coord): RawData) -> Self {
+        Self::new(&position, &normal, &tex_coord)
+    }
+}
+
+impl BoundingBox {
+    pub fn new<T: Into<glam::Vec3>>(min: T, max: T) -> Self {
+        Self {
+            min: min.into(),
+            max: max.into(),
+        }
+    }
+
+    pub fn transform(self, transform: glam::Mat4) -> Self {
+        let a = (transform * self.min.extend(1.0)).truncate();
+        let b = (transform * self.max.extend(1.0)).truncate();
+        Self::new(a.min(b), a.max(b))
+    }
+
+    pub fn union(self, other: Self) -> Self {
+        Self::new(self.min.min(other.min), self.max.max(other.max))
+    }
+
+    pub fn center(&self) -> glam::Vec3 {
+        (self.min + self.max) / 2.
+    }
+
+    pub fn size(&self) -> glam::Vec3 {
+        self.max - self.min
+    }
+}
+
+impl Default for BoundingBox {
+    fn default() -> Self {
+        Self::new(glam::Vec3::INFINITY, glam::Vec3::NEG_INFINITY)
+    }
 }

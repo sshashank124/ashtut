@@ -1,10 +1,6 @@
 [workspace]
 members = [
-    "runner",
-    "shared",
-    "shaders/pathtracer",
-    "shaders/rasterizer",
-    "shaders/tonemap",
+    "renderer",
     "scene",
 ]
 resolver = "2"
@@ -17,27 +13,16 @@ repository = "https://github.com/sshashank124/tsunami"
 
 [workspace.dependencies]
 bytemuck = { version = "1.14", features = ["derive"] }
-glam = { version = "0.24", default-features = false, features = ["libm"] }
+glam = "0.25"
 scene = { path = "scene" }
 serde = { version = "1.0", default-features = false }
-shared = { path = "shared" }
-spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu" }
-spirv-builder = { git = "https://github.com/EmbarkStudios/rust-gpu" }
 
 [profile.release]
 opt-level = 3
 codegen-units = 16
 lto = "thin"
 
-[profile.release.build-override]
-opt-level = 3
-codegen-units = 16
-
 [profile.dev]
 opt-level = 3
 codegen-units = 64
 lto = "thin"
-
-[profile.dev.build-override]
-opt-level = 3
-codegen-units = 64
