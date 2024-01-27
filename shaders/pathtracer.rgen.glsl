@@ -1,6 +1,8 @@
 #version 460
 #extension GL_EXT_ray_tracing : require
 
+#include "inputs.glsl"
+#include "scene.glsl"
 #include "raycommon.glsl"
 
 layout(push_constant) uniform _PushConstants { PathtracerConstants constants; };

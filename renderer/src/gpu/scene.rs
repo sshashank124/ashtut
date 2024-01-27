@@ -21,8 +21,8 @@ impl Scene {
         let device_info = scene::SceneDesc {
             vertices_address: vertices.get_device_address(ctx),
             indices_address: indices.get_device_address(ctx),
-            primitives_address: primitives.get_device_address(ctx),
             materials_address: materials.get_device_address(ctx),
+            primitives_address: primitives.get_device_address(ctx),
         };
         let scene_desc = Self::init_scene_desc_buffer(ctx, scope, &device_info);
         let host_info = scene.info;

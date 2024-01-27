@@ -1,25 +1,12 @@
-use bytemuck::{Pod, Zeroable};
-
 use core::ops::{Div, Mul};
 
-#[repr(C)]
-#[derive(Copy, Clone, Default, Pod, Zeroable)]
-pub struct RasterizerConstants {
-    pub model_transform: glam::Mat4,
-    pub material_index: u32,
-    pub _pad: glam::Vec3,
-}
+use bytemuck::{Pod, Zeroable};
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, Pod, Zeroable)]
-pub struct PathtracerConstants {
-    pub frame: u32,
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Default, Pod, Zeroable)]
-pub struct Uniforms {
-    pub camera: Camera,
+pub struct Transform {
+    pub forward: glam::Mat4,
+    pub inverse: glam::Mat4,
 }
 
 #[repr(C)]
@@ -31,9 +18,22 @@ pub struct Camera {
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, Pod, Zeroable)]
-pub struct Transform {
-    pub forward: glam::Mat4,
-    pub inverse: glam::Mat4,
+pub struct Uniforms {
+    pub camera: Camera,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default, Pod, Zeroable)]
+pub struct RasterizerConstants {
+    pub model_transform: glam::Mat4,
+    pub material_index: u32,
+    pub pad: glam::Vec3,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Default, Pod, Zeroable)]
+pub struct PathtracerConstants {
+    pub frame: u32,
 }
 
 impl Transform {

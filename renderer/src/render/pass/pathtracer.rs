@@ -5,7 +5,8 @@ use std::{
 
 use ash::vk;
 
-use crate::data::shader;
+use shared::inputs;
+
 use crate::gpu::{
     acceleration_structure::AccelerationStructures,
     context::Context,
@@ -187,7 +188,7 @@ impl Pipeline {
         let push_constant_ranges = vk::PushConstantRange {
             stage_flags: vk::ShaderStageFlags::RAYGEN_KHR,
             offset: 0,
-            size: std::mem::size_of::<shader::PathtracerConstants>() as _,
+            size: std::mem::size_of::<inputs::PathtracerConstants>() as _,
         };
 
         let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
@@ -225,7 +226,7 @@ impl Pipeline {
     pub fn run(&self, ctx: &Context, common: &common::Data, frame: u32, sync_info: &SyncInfo) {
         let commands = self.pipeline.begin_pipeline(ctx, 0);
 
-        let push_constants = shader::PathtracerConstants { frame };
+        let push_constants = inputs::PathtracerConstants { frame };
 
         unsafe {
             ctx.cmd_push_constants(

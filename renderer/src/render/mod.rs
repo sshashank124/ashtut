@@ -3,7 +3,8 @@ mod sync_state;
 
 use std::slice;
 
-use crate::data::shader;
+use shared::inputs;
+
 use crate::gpu::{
     context::Context, scope::OneshotScope, swapchain::Swapchain, sync_info::SyncInfo, Destroy,
 };
@@ -26,7 +27,7 @@ pub struct Renderer {
     swapchain: Swapchain,
 
     // state
-    uniforms: shader::Uniforms,
+    uniforms: inputs::Uniforms,
     use_pathtracer: bool,
     frame: u32,
     state: SyncState,
@@ -37,9 +38,9 @@ pub enum Error {
 }
 
 impl Renderer {
-    pub fn create(ctx: &mut Context, scene: scene::Scene, camera: shader::Camera) -> Self {
+    pub fn create(ctx: &mut Context, scene: scene::Scene, camera: inputs::Camera) -> Self {
         let mut common = common::Data::create(ctx, scene);
-        let uniforms = shader::Uniforms { camera };
+        let uniforms = inputs::Uniforms { camera };
         common.uniforms.update(&uniforms);
 
         let pathtracer_pipeline = pathtracer::Pipeline::create(ctx, &common);
@@ -124,7 +125,7 @@ impl Renderer {
             .ok_or(Error::NeedsRecreating)
     }
 
-    pub fn update_camera(&mut self, camera: shader::Camera) {
+    pub fn update_camera(&mut self, camera: inputs::Camera) {
         self.uniforms.camera = camera;
         self.common.uniforms.update(&self.uniforms);
         self.frame = 0;

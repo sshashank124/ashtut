@@ -1,14 +1,11 @@
 [package]
-name = "scene"
+name = "shared"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 bytemuck = { workspace = true }
-flate2 = "1"
 glam = { workspace = true, features = ["bytemuck", "serde"] }
-gltf = "1"
-rmp-serde = { version = "1" }
 serde = { workspace = true, features = ["derive"] }
 
 [lints]

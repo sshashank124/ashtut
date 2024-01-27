@@ -2,9 +2,8 @@ use std::slice;
 
 use ash::vk;
 
-use scene::Vertex;
+use shared::inputs;
 
-use crate::data::shader;
 use crate::gpu::{
     context::Context,
     framebuffers::{self, Framebuffers},
@@ -124,7 +123,7 @@ impl Pipeline {
         let push_constant_ranges = vk::PushConstantRange {
             stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
             offset: 0,
-            size: std::mem::size_of::<shader::RasterizerConstants>() as _,
+            size: std::mem::size_of::<inputs::RasterizerConstants>() as _,
         };
 
         let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
@@ -235,7 +234,7 @@ impl Pipeline {
     ) {
         let bindings = [vk::VertexInputBindingDescription {
             binding: 0,
-            stride: std::mem::size_of::<Vertex>() as _,
+            stride: std::mem::size_of::<scene::Vertex>() as _,
             input_rate: vk::VertexInputRate::VERTEX,
         }];
 
@@ -243,7 +242,7 @@ impl Pipeline {
             binding: 0,
             location: 0,
             format: vk::Format::R32G32B32A32_SFLOAT,
-            offset: bytemuck::offset_of!(Vertex, position) as _,
+            offset: bytemuck::offset_of!(scene::Vertex, position) as _,
         }];
 
         (bindings, attributes)
@@ -289,7 +288,7 @@ impl Pipeline {
 
         let scene_info = &common.scene.host_info;
         for instance in &scene_info.instances {
-            let push_constants = shader::RasterizerConstants {
+            let push_constants = inputs::RasterizerConstants {
                 model_transform: instance.transform,
                 material_index: scene_info.primitive_infos[instance.primitive_index].material,
                 ..Default::default()

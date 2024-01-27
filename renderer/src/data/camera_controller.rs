@@ -1,4 +1,4 @@
-use super::shader;
+use shared::inputs;
 
 mod conf {
     pub const Z_NEAR: f32 = 1e-1;
@@ -61,14 +61,14 @@ impl CameraController {
         glam::vec3(-self.direction.z, 0., self.direction.x)
     }
 
-    pub fn camera(&self) -> shader::Camera {
-        shader::Camera {
-            view: shader::Transform::new(glam::Mat4::look_to_rh(
+    pub fn camera(&self) -> inputs::Camera {
+        inputs::Camera {
+            view: inputs::Transform::new(glam::Mat4::look_to_rh(
                 self.position,
                 self.direction,
                 glam::Vec3::Y,
             )),
-            proj: shader::Transform::proj(glam::Mat4::perspective_rh(
+            proj: inputs::Transform::proj(glam::Mat4::perspective_rh(
                 self.fov,
                 self.aspect_ratio,
                 conf::Z_NEAR,

@@ -3,7 +3,9 @@
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_scalar_block_layout : require
 
+#include "globals.glsl"
 #include "raycommon.glsl"
+#include "scene.glsl"
 
 layout(set=0, binding=1) uniform _SceneDesc { SceneDesc scene_desc; };
 

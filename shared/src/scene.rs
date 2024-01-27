@@ -1,5 +1,3 @@
-pub mod loader;
-
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 

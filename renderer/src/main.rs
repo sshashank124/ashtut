@@ -1,13 +1,4 @@
-#![allow(incomplete_features)]
-#![feature(adt_const_params, generic_const_exprs)]
-#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss,
-    clippy::default_trait_access,
-    clippy::struct_field_names
-)]
+#![feature(adt_const_params)]
 
 mod app;
 mod data;

@@ -1,5 +1,3 @@
-#![feature(io_error_more)]
-
 use std::{collections::HashMap, path::Path};
 
 struct Compiler {
@@ -42,18 +40,22 @@ impl Compiler {
         options.set_optimization_level(shaderc::OptimizationLevel::Performance);
         options.set_generate_debug_info();
         options.set_warnings_as_errors();
-        options.set_include_callback(|source, _, _, _| match self.sources.get(source) {
-            Some(content) => Ok(shaderc::ResolvedInclude {
-                resolved_name: source.into(),
-                content: content.into(),
-            }),
-            None => Err(format!("Unable to resolve source {source}")),
+        options.set_include_callback(|source, _, _, _| {
+            self.sources.get(source).map_or_else(
+                || Err(format!("Unable to resolve source {source}")),
+                |content| {
+                    Ok(shaderc::ResolvedInclude {
+                        resolved_name: source.into(),
+                        content: content.into(),
+                    })
+                },
+            )
         });
         Ok(options)
     }
 
     fn compile_shaders(&self, options: &shaderc::CompileOptions) -> Result<()> {
-        for (name, contents) in self.sources.iter() {
+        for (name, contents) in &self.sources {
             if let Some(shader_kind) = Self::shader_kind(name)? {
                 self.compile_shader(name, contents, shader_kind, options)?;
             }
@@ -104,7 +106,7 @@ impl Compiler {
 }
 
 fn main() -> Result<()> {
-    let compiler = Compiler::new("shaders")?;
+    let compiler = Compiler::new("../shaders")?;
     let options = compiler.options()?;
     compiler.compile_shaders(&options)?;
 

@@ -1,6 +1,6 @@
 #version 460
 
-#include "common.glsl"
+#include "inputs.glsl"
 
 layout(push_constant) uniform _PushConstants { RasterizerConstants constants; };
 
