@@ -1,7 +1,11 @@
+cargo-features = ["edition2024"]
+
 [package]
 name = "renderer"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [dependencies]
 ash = { version = "0.37", features = ["linked"] }

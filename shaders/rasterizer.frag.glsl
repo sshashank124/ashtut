@@ -1,9 +1,10 @@
 #version 460
 #extension GL_EXT_buffer_reference2 : require
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-#include "inputs.glsl"
-#include "scene.glsl"
+#include "inputs.h.glsl"
+#include "scene.h.glsl"
 
 layout(push_constant) uniform _PushConstants { RasterizerConstants constants; };
 

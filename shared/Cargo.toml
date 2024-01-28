@@ -1,11 +1,16 @@
+cargo-features = ["edition2024"]
+
 [package]
 name = "shared"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [dependencies]
 bytemuck = { workspace = true }
 glam = { workspace = true, features = ["bytemuck", "serde"] }
+glsl = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
 [lints]

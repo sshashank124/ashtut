@@ -1,0 +1,18 @@
+cargo-features = ["edition2024"]
+
+[package]
+name = "glsl_derive"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "1"
+syn = "2"
+
+[lints]
+workspace = true

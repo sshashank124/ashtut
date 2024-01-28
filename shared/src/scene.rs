@@ -1,6 +1,8 @@
 use bytemuck::{Pod, Zeroable};
 use serde::{Deserialize, Serialize};
 
+use glsl::GlslStruct;
+
 #[derive(Deserialize, Serialize)]
 pub struct Scene {
     pub data: Data,
@@ -23,7 +25,7 @@ pub struct Info {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, Pod, Zeroable)]
+#[derive(Copy, Clone, Default, GlslStruct, Pod, Zeroable)]
 pub struct SceneDesc {
     pub vertices_address: u64,
     pub indices_address: u64,
@@ -32,7 +34,7 @@ pub struct SceneDesc {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, Deserialize, Serialize, Pod, Zeroable)]
+#[derive(Copy, Clone, Default, Deserialize, Serialize, GlslStruct, Pod, Zeroable)]
 pub struct Vertex {
     pub position: glam::Vec4,
     pub normal: glam::Vec4,
@@ -40,14 +42,14 @@ pub struct Vertex {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Default, Deserialize, Serialize, Pod, Zeroable)]
+#[derive(Clone, Copy, Default, Deserialize, Serialize, GlslStruct, Pod, Zeroable)]
 pub struct Material {
     pub color: glam::Vec4,
     pub emittance: glam::Vec4,
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Default, Deserialize, Serialize, Pod, Zeroable)]
+#[derive(Clone, Copy, Default, Deserialize, Serialize, GlslStruct, Pod, Zeroable)]
 pub struct PrimitiveInfo {
     pub indices_offset: u32,
     pub vertices_offset: u32,

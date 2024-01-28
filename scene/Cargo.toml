@@ -1,7 +1,11 @@
+cargo-features = ["edition2024"]
+
 [package]
 name = "scene"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [dependencies]
 bytemuck = { workspace = true }

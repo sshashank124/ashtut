@@ -3,24 +3,28 @@ members = [
     "renderer",
     "scene",
     "shared",
+    "glsl/glsl",
+    "glsl/glsl_derive",
 ]
 resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["Shashank Singh <sshashank124@gmail.com>"]
 repository = "https://github.com/sshashank124/tsunami"
 
 [workspace.dependencies]
 bytemuck = { version = "1.14", features = ["derive"] }
 glam = "0.25"
+glsl = { path = "glsl/glsl" }
 scene = { path = "scene" }
 shared = { path = "shared" }
 serde = { version = "1.0", default-features = false }
 
 [workspace.lints.rust]
 incomplete_features = "allow"
+unsafe_op_in_unsafe_fn = { level = "allow", priority = 1 }
 
 [workspace.lints.clippy]
 all = "warn"

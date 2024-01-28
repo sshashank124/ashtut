@@ -2,28 +2,30 @@ use core::ops::{Div, Mul};
 
 use bytemuck::{Pod, Zeroable};
 
+use glsl::GlslStruct;
+
 #[repr(C)]
-#[derive(Copy, Clone, Default, Pod, Zeroable)]
+#[derive(Copy, Clone, Default, GlslStruct, Pod, Zeroable)]
 pub struct Transform {
     pub forward: glam::Mat4,
     pub inverse: glam::Mat4,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, Pod, Zeroable)]
+#[derive(Copy, Clone, Default, GlslStruct, Pod, Zeroable)]
 pub struct Camera {
     pub view: Transform,
     pub proj: Transform,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, Pod, Zeroable)]
+#[derive(Copy, Clone, Default, GlslStruct, Pod, Zeroable)]
 pub struct Uniforms {
     pub camera: Camera,
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, Pod, Zeroable)]
+#[derive(Copy, Clone, Default, GlslStruct, Pod, Zeroable)]
 pub struct RasterizerConstants {
     pub model_transform: glam::Mat4,
     pub material_index: u32,
@@ -31,7 +33,7 @@ pub struct RasterizerConstants {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, Pod, Zeroable)]
+#[derive(Copy, Clone, Default, GlslStruct, Pod, Zeroable)]
 pub struct PathtracerConstants {
     pub frame: u32,
 }
