@@ -15,7 +15,6 @@ gpu-allocator = { version = "0.23", default-features = false, features = [ "vulk
 image = "0.24"
 scene = { workspace = true }
 shared = { workspace = true }
-tobj = "4"
 winit = "0.29"
 
 [lints]

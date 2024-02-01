@@ -4,8 +4,8 @@
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-#include "globals.glsl"
-#include "raycommon.glsl"
+#include "globals.common.glsl"
+#include "ray.common.glsl"
 #include "scene.h.glsl"
 
 layout(set=0, binding=1) uniform _SceneDesc { SceneDesc scene_desc; };

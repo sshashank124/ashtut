@@ -2,6 +2,8 @@ use std::slice;
 
 use ash::vk;
 
+use shared::scene;
+
 use crate::gpu::{
     context::Context, descriptors::Descriptors, image, scene::Scene, scope::OneshotScope,
     uniforms::Uniforms, Destroy,

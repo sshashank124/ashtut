@@ -1,5 +1,7 @@
 use ash::vk;
 
+use shared::scene;
+
 use super::{buffer::Buffer, context::Context, scope::OneshotScope, Destroy};
 
 pub struct Scene {

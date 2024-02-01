@@ -2,7 +2,7 @@ use std::slice;
 
 use ash::vk;
 
-use shared::inputs;
+use shared::{inputs, scene};
 
 use crate::gpu::{
     context::Context,
@@ -230,7 +230,7 @@ impl Pipeline {
 
     fn vertex_binding_info() -> (
         [vk::VertexInputBindingDescription; 1],
-        [vk::VertexInputAttributeDescription; 1],
+        [vk::VertexInputAttributeDescription; 2],
     ) {
         let bindings = [vk::VertexInputBindingDescription {
             binding: 0,
@@ -238,12 +238,20 @@ impl Pipeline {
             input_rate: vk::VertexInputRate::VERTEX,
         }];
 
-        let attributes = [vk::VertexInputAttributeDescription {
-            binding: 0,
-            location: 0,
-            format: vk::Format::R32G32B32A32_SFLOAT,
-            offset: bytemuck::offset_of!(scene::Vertex, position) as _,
-        }];
+        let attributes = [
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 0,
+                format: vk::Format::R32G32B32A32_SFLOAT,
+                offset: bytemuck::offset_of!(scene::Vertex, position) as _,
+            },
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 1,
+                format: vk::Format::R32G32B32A32_SFLOAT,
+                offset: bytemuck::offset_of!(scene::Vertex, tex_coords) as _,
+            },
+        ];
 
         (bindings, attributes)
     }

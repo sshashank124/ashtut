@@ -1,4 +1,4 @@
-#include "rng.glsl"
+#include "rng.common.glsl"
 
 const uint MAX_RECURSE_DEPTH = 5;
 const uint RAY_FLAGS = gl_RayFlagsOpaqueEXT;

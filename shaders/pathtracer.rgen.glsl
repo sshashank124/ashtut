@@ -5,7 +5,7 @@
 
 #include "inputs.h.glsl"
 #include "scene.h.glsl"
-#include "raycommon.glsl"
+#include "ray.common.glsl"
 
 layout(push_constant) uniform _PushConstants { PathtracerConstants constants; };
 

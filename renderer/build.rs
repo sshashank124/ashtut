@@ -86,13 +86,13 @@ impl Compiler {
     }
 
     fn shader_kind(file: impl AsRef<Path>) -> Result<Option<shaderc::ShaderKind>> {
-        let extension = file
-            .as_ref()
-            .file_stem()
-            .map(Path::new)
-            .ok_or("Unable to read file stem")?
+        let file_stem = file.as_ref().file_stem().ok_or(
+            "Unable to read file stem, shader files should ideally have the .glsl extension",
+        )?;
+        let extension = Path::new(file_stem)
             .extension()
-            .and_then(std::ffi::OsStr::to_str);
+            .ok_or("Unable to read file kind, files should generally be named <name>.<kind>.glsl")?
+            .to_str();
 
         Ok(match extension {
             Some("vert") => Some(shaderc::ShaderKind::Vertex),

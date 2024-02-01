@@ -2,10 +2,11 @@ use std::{collections::HashMap, path::Path};
 
 use gltf::{buffer, mesh};
 
-use super::FileLoader;
-use crate::{
+use shared::scene::{
     BoundingBox, Data, Info, Instance, Material, PrimitiveInfo, PrimitiveSize, Scene, Vertex,
 };
+
+use super::FileLoader;
 
 pub struct Gltf;
 
