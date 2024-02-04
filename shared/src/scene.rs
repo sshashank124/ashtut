@@ -3,27 +3,6 @@ use serde::{Deserialize, Serialize};
 
 use glsl::GlslStruct;
 
-#[derive(Deserialize, Serialize)]
-pub struct Scene {
-    pub data: Data,
-    pub info: Info,
-}
-
-#[derive(Default, Deserialize, Serialize)]
-pub struct Data {
-    pub indices: Vec<u32>,
-    pub vertices: Vec<Vertex>,
-    pub materials: Vec<Material>,
-}
-
-#[derive(Default, Deserialize, Serialize)]
-pub struct Info {
-    pub primitive_infos: Vec<PrimitiveInfo>,
-    pub primitive_sizes: Vec<PrimitiveSize>,
-    pub instances: Vec<Instance>,
-    pub bounding_box: BoundingBox,
-}
-
 #[repr(C)]
 #[derive(Copy, Clone, Default, GlslStruct, Pod, Zeroable)]
 pub struct SceneDesc {
@@ -44,8 +23,10 @@ pub struct Vertex {
 #[repr(C)]
 #[derive(Clone, Copy, Default, Deserialize, Serialize, GlslStruct, Pod, Zeroable)]
 pub struct Material {
-    pub color: glam::Vec4,
-    pub emittance: glam::Vec4,
+    pub color: glam::Vec3,
+    pub color_texture: i32,
+    pub emittance: glam::Vec3,
+    pub emittance_texture: i32,
 }
 
 #[repr(C)]
@@ -56,78 +37,20 @@ pub struct PrimitiveInfo {
     pub material: u32,
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct PrimitiveSize {
-    pub indices_size: u32,
-    pub vertices_size: u32,
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct Instance {
-    pub primitive_index: usize,
-    pub transform: glam::Mat4,
-}
-
-#[derive(Clone, Copy, Deserialize, Serialize)]
-pub struct BoundingBox {
-    pub min: glam::Vec3,
-    pub max: glam::Vec3,
-}
-
 impl Vertex {
-    pub fn new(position: &[f32], normal: &[f32], tex_coord: &[f32]) -> Self {
+    pub fn new(position: &[f32], normal: &[f32], tex_coord0: &[f32], tex_coord1: &[f32]) -> Self {
         Self {
             position: glam::Vec3::from_slice(position).extend(1.0),
             normal: glam::Vec3::from_slice(normal).extend(1.0),
-            tex_coords: glam::Vec2::from_slice(tex_coord).extend(0.0).extend(0.0),
+            tex_coords: glam::Vec4::new(tex_coord0[0], tex_coord0[1], tex_coord1[0], tex_coord1[1]),
         }
     }
 }
 
-type RawData = (([f32; 3], [f32; 3]), [f32; 2]); // ((position, normal), tex_coord)
+// (((position, normal), tex_coord0), tex_coord1)
+type RawData = ((([f32; 3], [f32; 3]), [f32; 2]), [f32; 2]);
 impl From<RawData> for Vertex {
-    fn from(((position, normal), tex_coord): RawData) -> Self {
-        Self::new(&position, &normal, &tex_coord)
-    }
-}
-
-impl PrimitiveSize {
-    pub const fn count(&self) -> u32 {
-        self.indices_size / 3
-    }
-}
-
-impl BoundingBox {
-    pub fn new<T: Into<glam::Vec3>>(min: T, max: T) -> Self {
-        Self {
-            min: min.into(),
-            max: max.into(),
-        }
-    }
-
-    #[must_use]
-    pub fn transform(self, transform: glam::Mat4) -> Self {
-        let a = (transform * self.min.extend(1.0)).truncate();
-        let b = (transform * self.max.extend(1.0)).truncate();
-        Self::new(a.min(b), a.max(b))
-    }
-
-    #[must_use]
-    pub fn union(self, other: Self) -> Self {
-        Self::new(self.min.min(other.min), self.max.max(other.max))
-    }
-
-    pub fn center(&self) -> glam::Vec3 {
-        (self.min + self.max) / 2.
-    }
-
-    pub fn size(&self) -> glam::Vec3 {
-        self.max - self.min
-    }
-}
-
-impl Default for BoundingBox {
-    fn default() -> Self {
-        Self::new(glam::Vec3::INFINITY, glam::Vec3::NEG_INFINITY)
+    fn from((((position, normal), tex_coord0), tex_coord1): RawData) -> Self {
+        Self::new(&position, &normal, &tex_coord0, &tex_coord1)
     }
 }

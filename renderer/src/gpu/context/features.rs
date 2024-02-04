@@ -13,21 +13,27 @@ pub struct Features {
 
 impl Features {
     pub fn required() -> Self {
-        let mut features = Self::default();
-        features.v_1_0.features.sampler_anisotropy = 1;
-        features.v_1_0.features.shader_int64 = 1;
-        features.v_1_2.buffer_device_address = 1;
-        features.v_1_2.scalar_block_layout = 1;
-        features.v_1_2.vulkan_memory_model = 1;
-        features.acceleration_structure.acceleration_structure = 1;
-        features.ray_tracing_pipeline.ray_tracing_pipeline = 1;
-        features
+        let mut f = Self::default();
+        f.v_1_0.features.sampler_anisotropy = 1;
+        f.v_1_0.features.shader_int64 = 1;
+        f.v_1_2.buffer_device_address = 1;
+        f.v_1_2.descriptor_binding_partially_bound = 1;
+        f.v_1_2.descriptor_binding_variable_descriptor_count = 1;
+        f.v_1_2.runtime_descriptor_array = 1;
+        f.v_1_2.scalar_block_layout = 1;
+        f.v_1_2.vulkan_memory_model = 1;
+        f.acceleration_structure.acceleration_structure = 1;
+        f.ray_tracing_pipeline.ray_tracing_pipeline = 1;
+        f
     }
 
     pub const fn supports_requirements(&self) -> bool {
         self.v_1_0.features.sampler_anisotropy > 0
             && self.v_1_0.features.shader_int64 > 0
             && self.v_1_2.buffer_device_address > 0
+            && self.v_1_2.descriptor_binding_partially_bound > 0
+            && self.v_1_2.descriptor_binding_variable_descriptor_count > 0
+            && self.v_1_2.runtime_descriptor_array > 0
             && self.v_1_2.scalar_block_layout > 0
             && self.v_1_2.vulkan_memory_model > 0
             && self.acceleration_structure.acceleration_structure > 0

@@ -30,7 +30,7 @@ pub struct Image<const FORMAT: Format> {
 }
 
 pub struct BarrierInfo {
-    layout: vk::ImageLayout,
+    pub layout: vk::ImageLayout,
     stage: vk::PipelineStageFlags,
     access: vk::AccessFlags,
 }
@@ -183,7 +183,7 @@ impl Image<{ Format::Color }> {
     ) -> Self {
         let staging = {
             let info = vk::BufferCreateInfo::builder().usage(vk::BufferUsageFlags::TRANSFER_SRC);
-            Buffer::create_with_data(ctx, &format!("{name} [STAGING]"), *info, img.as_raw())
+            Buffer::create_with_data(ctx, &format!("{name} [STAGING]"), *info, img)
         };
 
         let extent = vk::Extent3D {

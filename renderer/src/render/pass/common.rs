@@ -2,12 +2,14 @@ use std::slice;
 
 use ash::vk;
 
-use shared::scene;
-
 use crate::gpu::{
     context::Context, descriptors::Descriptors, image, scene::Scene, scope::OneshotScope,
     uniforms::Uniforms, Destroy,
 };
+
+mod conf {
+    pub const MAX_NUM_TEXTURES: u32 = 128;
+}
 
 pub struct Data {
     pub descriptors: Descriptors,
@@ -77,8 +79,25 @@ impl Data {
                         vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::CLOSEST_HIT_KHR,
                     )
                     .build(),
+                vk::DescriptorSetLayoutBinding::builder()
+                    .binding(2)
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .descriptor_count(conf::MAX_NUM_TEXTURES)
+                    .stage_flags(
+                        vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                    )
+                    .build(),
             ];
-            let info = vk::DescriptorSetLayoutCreateInfo::builder().bindings(&bindings);
+            let binding_flags = [
+                vk::DescriptorBindingFlags::empty(),
+                vk::DescriptorBindingFlags::empty(),
+                vk::DescriptorBindingFlags::PARTIALLY_BOUND,
+            ];
+            let mut binding_flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
+                .binding_flags(&binding_flags);
+            let info = vk::DescriptorSetLayoutCreateInfo::builder()
+                .bindings(&bindings)
+                .push_next(&mut binding_flags_info);
             unsafe {
                 ctx.create_descriptor_set_layout(&info, None)
                     .expect("Failed to create descriptor set layout")
@@ -94,6 +113,10 @@ impl Data {
                 vk::DescriptorPoolSize::builder()
                     .ty(vk::DescriptorType::UNIFORM_BUFFER)
                     .descriptor_count(1)
+                    .build(),
+                vk::DescriptorPoolSize::builder()
+                    .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .descriptor_count(conf::MAX_NUM_TEXTURES)
                     .build(),
             ];
             let info = vk::DescriptorPoolCreateInfo::builder()
@@ -127,6 +150,19 @@ impl Data {
             .buffer(*self.scene.scene_desc)
             .range(vk::WHOLE_SIZE);
 
+        let textures_info: Vec<_> = self
+            .scene
+            .textures
+            .iter()
+            .map(|tex| {
+                vk::DescriptorImageInfo::builder()
+                    .image_view(tex.view)
+                    .image_layout(image::BarrierInfo::SHADER_READ.layout)
+                    .sampler(*tex.sampler)
+                    .build()
+            })
+            .collect();
+
         for &set in &self.descriptors.sets {
             let writes = [
                 vk::WriteDescriptorSet::builder()
@@ -140,6 +176,12 @@ impl Data {
                     .dst_binding(1)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                     .buffer_info(slice::from_ref(&scene_desc_info))
+                    .build(),
+                vk::WriteDescriptorSet::builder()
+                    .dst_set(set)
+                    .dst_binding(2)
+                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                    .image_info(&textures_info)
                     .build(),
             ];
 

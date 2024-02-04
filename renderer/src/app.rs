@@ -34,7 +34,7 @@ impl App {
     pub fn new(window: &Window, scene_file: &str) -> Self {
         let mut ctx = Context::init(window);
 
-        let scene = scene::load(scene_file);
+        let scene = scene::io::load(scene_file);
 
         let camera_controller = CameraController::new(
             scene.info.bounding_box.size() * 1.2 + scene.info.bounding_box.center(),

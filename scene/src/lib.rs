@@ -1,43 +1,98 @@
 pub mod gltf;
+pub mod io;
 
-use std::{
-    fs::File,
-    io::{BufReader, BufWriter},
-    path::Path,
-};
+use serde::{Deserialize, Serialize};
 
-pub trait FileLoader {
-    const SUPPORTED_EXTENSIONS: &'static [&'static str];
-    fn load(filename: impl AsRef<Path>) -> shared::scene::Scene;
+pub use shared::scene::*;
 
-    fn can_load(filename: impl AsRef<Path>) -> bool {
-        let extension = filename
-            .as_ref()
-            .extension()
-            .and_then(|s| s.to_str())
-            .expect("No file extension found");
-        Self::SUPPORTED_EXTENSIONS.contains(&extension)
+#[derive(Default, Deserialize, Serialize)]
+pub struct Scene {
+    pub data: Data,
+    pub info: Info,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+pub struct Data {
+    pub indices: Vec<u32>,
+    pub vertices: Vec<Vertex>,
+    pub materials: Vec<Material>,
+    pub images: Vec<Image>,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+pub struct Info {
+    pub primitive_infos: Vec<PrimitiveInfo>,
+    pub primitive_sizes: Vec<PrimitiveSize>,
+    pub instances: Vec<Instance>,
+    pub textures: Vec<TextureInfo>,
+    pub bounding_box: BoundingBox,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+pub struct Image {
+    pub source: std::path::PathBuf,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+pub struct PrimitiveSize {
+    pub indices_size: u32,
+    pub vertices_size: u32,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Instance {
+    pub primitive_index: usize,
+    pub transform: glam::Mat4,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+pub struct TextureInfo {
+    pub image_index: u32,
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+pub struct BoundingBox {
+    pub min: glam::Vec3,
+    pub max: glam::Vec3,
+}
+
+impl PrimitiveSize {
+    pub const fn count(&self) -> u32 {
+        self.indices_size / 3
     }
 }
 
-const FILE_EXTENSION: &str = "tsnasset";
+impl BoundingBox {
+    pub fn new<T: Into<glam::Vec3>>(min: T, max: T) -> Self {
+        Self {
+            min: min.into(),
+            max: max.into(),
+        }
+    }
 
-pub fn load(file: impl AsRef<Path>) -> shared::scene::Scene {
-    let filepath = file.as_ref();
-    assert!(
-        filepath.extension().unwrap_or_default() == FILE_EXTENSION,
-        "Asset must be preprocessed before loading"
-    );
-    let file = File::open(filepath).expect("Unable to open scene asset file");
-    let reader = flate2::bufread::GzDecoder::new(BufReader::new(file));
-    rmp_serde::decode::from_read(reader).expect("Failed to load scene asset")
+    #[must_use]
+    pub fn transform(self, transform: glam::Mat4) -> Self {
+        let a = (transform * self.min.extend(1.0)).truncate();
+        let b = (transform * self.max.extend(1.0)).truncate();
+        Self::new(a.min(b), a.max(b))
+    }
+
+    #[must_use]
+    pub fn union(self, other: Self) -> Self {
+        Self::new(self.min.min(other.min), self.max.max(other.max))
+    }
+
+    pub fn center(&self) -> glam::Vec3 {
+        (self.min + self.max) / 2.
+    }
+
+    pub fn size(&self) -> glam::Vec3 {
+        self.max - self.min
+    }
 }
 
-pub fn save(scene: &shared::scene::Scene, file: impl AsRef<Path>) {
-    let output_filename = file.as_ref().with_extension(FILE_EXTENSION);
-    let output_file = File::create(&output_filename).expect("Unable to open file for writing");
-    let mut writer =
-        flate2::write::GzEncoder::new(BufWriter::new(output_file), flate2::Compression::default());
-    rmp_serde::encode::write(&mut writer, &scene).expect("Failed to save processed asset");
-    println!("Asset processed and saved to {}", output_filename.display());
+impl Default for BoundingBox {
+    fn default() -> Self {
+        Self::new(glam::Vec3::INFINITY, glam::Vec3::NEG_INFINITY)
+    }
 }

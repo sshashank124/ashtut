@@ -11,11 +11,3 @@ pub fn bytes_to_string(string: *const std::ffi::c_char) -> String {
 pub const fn align_to(value: usize, alignment: usize) -> usize {
     (value + alignment - 1) & !(alignment - 1)
 }
-
-pub fn load_image_from_file(filename: &str) -> image::RgbaImage {
-    image::io::Reader::open(filename)
-        .expect("Failed to open image file")
-        .decode()
-        .expect("Failed to read image from file")
-        .into_rgba8()
-}

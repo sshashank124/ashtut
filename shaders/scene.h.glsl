@@ -14,8 +14,10 @@ struct Vertex {
 };
 
 struct Material {
-  vec4 color;
-  vec4 emittance;
+  vec3 color;
+  int color_texture;
+  vec3 emittance;
+  int emittance_texture;
 };
 
 struct PrimitiveInfo {

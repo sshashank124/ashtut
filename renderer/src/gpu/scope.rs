@@ -42,9 +42,7 @@ impl<const MULTI_USE: bool> Scope<{ MULTI_USE }> {
 
 impl<const MULTI_USE: bool> Destroy<Context> for Scope<{ MULTI_USE }> {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        self.resources
-            .iter_mut()
-            .for_each(|resource| resource.destroy_with(ctx));
         self.commands.destroy_with(ctx);
+        self.resources.destroy_with(ctx);
     }
 }

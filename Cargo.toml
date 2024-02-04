@@ -34,6 +34,7 @@ perf = "warn"
 nursery = "warn"
 suspicious = "warn"
 cast_possible_truncation = { level = "allow", priority = 1 }
+cast_possible_wrap = { level = "allow", priority = 1 }
 cast_precision_loss = { level = "allow", priority = 1 }
 default_trait_access = { level = "allow", priority = 1 }
 missing_panics_doc = { level = "allow", priority = 1 }
@@ -47,6 +48,7 @@ codegen-units = 16
 lto = "thin"
 
 [profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
 opt-level = 3
-codegen-units = 64
-lto = "thin"

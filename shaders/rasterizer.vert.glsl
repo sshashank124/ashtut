@@ -8,7 +8,7 @@ layout(push_constant) uniform _PushConstants { RasterizerConstants constants; };
 layout(binding=0) uniform _Uniforms { Uniforms uniforms; };
 
 layout(location=0) in vec4 position;
-layout(location=1) in vec2 tex_coord;
+layout(location=1) in vec4 tex_coords;
 
 layout(location=0) out _Interface { Interface out_data; };
 
@@ -17,5 +17,5 @@ void main() {
               * uniforms.camera.view.forward
               * constants.model_transform
               * position;
-  out_data.tex_coord = tex_coord;
+  out_data.tex_coords = tex_coords;
 }

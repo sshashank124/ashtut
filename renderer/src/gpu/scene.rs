@@ -1,8 +1,13 @@
 use ash::vk;
 
-use shared::scene;
-
-use super::{buffer::Buffer, context::Context, scope::OneshotScope, Destroy};
+use super::{
+    buffer::Buffer,
+    context::Context,
+    image::{Format, Image},
+    scope::OneshotScope,
+    texture::Texture,
+    Destroy,
+};
 
 pub struct Scene {
     pub indices: Buffer,
@@ -10,6 +15,8 @@ pub struct Scene {
     pub primitives: Buffer,
     pub materials: Buffer,
     pub scene_desc: Buffer,
+    pub images: Vec<Image<{ Format::Color }>>,
+    pub textures: Vec<Texture<{ Format::Color }>>,
     pub host_info: scene::Info,
     pub device_info: scene::SceneDesc,
 }
@@ -27,7 +34,9 @@ impl Scene {
             primitives_address: primitives.get_device_address(ctx),
         };
         let scene_desc = Self::init_scene_desc_buffer(ctx, scope, &device_info);
-        let host_info = scene.info;
+
+        let scene::Scene { info, data } = scene;
+        let (images, textures) = Self::init_textures(ctx, scope, &info, data);
 
         Self {
             indices,
@@ -35,7 +44,9 @@ impl Scene {
             primitives,
             materials,
             scene_desc,
-            host_info,
+            images,
+            textures,
+            host_info: info,
             device_info,
         }
     }
@@ -134,10 +145,59 @@ impl Scene {
             bytemuck::bytes_of(scene_desc),
         )
     }
+
+    fn init_textures(
+        ctx: &mut Context,
+        scope: &mut OneshotScope,
+        scene_info: &scene::Info,
+        scene_data: scene::Data,
+    ) -> (
+        Vec<Image<{ Format::Color }>>,
+        Vec<Texture<{ Format::Color }>>,
+    ) {
+        let images = if scene_data.images.is_empty() {
+            vec![Image::create_from_image(
+                ctx,
+                scope,
+                "Placeholder pixel",
+                &image::RgbaImage::new(1, 1),
+            )]
+        } else {
+            scene_data
+                .images
+                .into_iter()
+                .map(|scene::Image { source }| {
+                    let image = image::open(&source)
+                        .expect("Unable to load image")
+                        .into_rgba8();
+                    Image::create_from_image(
+                        ctx,
+                        scope,
+                        source.to_str().unwrap_or_default(),
+                        &image,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+
+        let scene_textures = if scene_info.textures.is_empty() {
+            std::slice::from_ref(&scene::TextureInfo { image_index: 0 })
+        } else {
+            scene_info.textures.as_slice()
+        };
+        let textures = scene_textures
+            .iter()
+            .map(|tex| Texture::for_image(ctx, &images[tex.image_index as usize]))
+            .collect();
+
+        (images, textures)
+    }
 }
 
 impl Destroy<Context> for Scene {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+        self.textures.destroy_with(ctx);
+        self.images.destroy_with(ctx);
         self.scene_desc.destroy_with(ctx);
         self.primitives.destroy_with(ctx);
         self.materials.destroy_with(ctx);

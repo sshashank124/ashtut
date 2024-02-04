@@ -2,8 +2,6 @@ use std::{ops::Deref, slice};
 
 use ash::vk;
 
-use shared::scene;
-
 use crate::{
     gpu::{query_pool::QueryPool, scene::Scene, scope::FlushableScope},
     util,

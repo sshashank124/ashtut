@@ -1,3 +1,3 @@
 struct Interface {
-  vec2 tex_coord;
+  vec4 tex_coords;
 };

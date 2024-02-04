@@ -1,5 +1,6 @@
 #version 460
 #extension GL_EXT_buffer_reference2 : require
+#extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
@@ -9,6 +10,7 @@
 #include "scene.h.glsl"
 
 layout(set=0, binding=1) uniform _SceneDesc { SceneDesc scene_desc; };
+layout(set=0, binding=2) uniform sampler2D[] textures;
 
 layout(buffer_reference, scalar) buffer Vertices { Vertex v[]; };
 layout(buffer_reference, scalar) buffer Indices { uvec3 i[]; };
@@ -42,6 +44,8 @@ void main() {
   const vec3 bitangent = cross(world_normal, tangent);
   const mat3 frame = mat3(tangent, bitangent, world_normal);
 
+  const vec2 tex_coord0 = v0.tex_coords.xy * bary.x + v1.tex_coords.xy * bary.y + v2.tex_coords.xy * bary.z;
+
   const float r1 = rng_float(payload.rng);
   const float r2 = 2 * PI * rng_float(payload.rng);
   const float r1_sq = sqrt(r1);
@@ -50,8 +54,17 @@ void main() {
 
   const Material material = materials.m[primitive.material];
 
+  vec3 diffuse = material.color;
+  if (material.color_texture >= 0) {
+    diffuse *= texture(textures[material.color_texture], tex_coord0).xyz;
+  }
+  vec3 emittance = material.emittance;
+  if (material.emittance_texture >= 0) {
+    emittance *= texture(textures[material.emittance_texture], tex_coord0).xyz;
+  }
+
   payload.ray.origin = vec4(world_position, 0);
   payload.ray.direction = vec4(frame * out_dir, 0);
-  payload.hit_value = vec3(material.emittance);
-  payload.weight = vec3(material.color);
+  payload.hit_value = emittance;
+  payload.weight = diffuse;
 }

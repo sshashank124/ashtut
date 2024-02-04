@@ -3,7 +3,7 @@ mod sync_state;
 
 use std::slice;
 
-use shared::{inputs, scene};
+use shared::inputs;
 
 use crate::gpu::{
     context::Context, scope::OneshotScope, swapchain::Swapchain, sync_info::SyncInfo, Destroy,
