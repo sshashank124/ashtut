@@ -119,15 +119,29 @@ impl ShaderBindingTable {
 }
 
 impl RayTracingShaders {
-    pub fn new(ctx: &Context, raygen: &str, misses: &[&str], closest_hits: &[&str]) -> Self {
-        let raygen = ctx.create_shader_module_from_file(raygen);
-        let misses = misses
+    pub fn new(
+        ctx: &Context,
+        raygen_file: &str,
+        misses_files: &[&str],
+        closest_hits_files: &[&str],
+    ) -> Self {
+        let raygen = ctx.create_shader_module_from_file(raygen_file);
+        ctx.set_debug_name(raygen, raygen_file);
+        let misses = misses_files
             .iter()
-            .map(|shader| ctx.create_shader_module_from_file(shader))
+            .map(|shader| {
+                let module = ctx.create_shader_module_from_file(shader);
+                ctx.set_debug_name(module, shader);
+                module
+            })
             .collect();
-        let closest_hits = closest_hits
+        let closest_hits = closest_hits_files
             .iter()
-            .map(|shader| ctx.create_shader_module_from_file(shader))
+            .map(|shader| {
+                let module = ctx.create_shader_module_from_file(shader);
+                ctx.set_debug_name(module, shader);
+                module
+            })
             .collect();
 
         Self {

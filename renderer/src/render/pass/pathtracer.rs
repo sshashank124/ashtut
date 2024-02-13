@@ -20,6 +20,7 @@ use crate::gpu::{
 use super::common;
 
 pub mod conf {
+    pub const NAME: &str = "Pathtracer";
     pub const SHADER_RAY_GENERATION: &str = env!("pathtracer.rgen.glsl");
     pub const SHADER_MISSES: &[&str] = &[env!("pathtracer.rmiss.glsl")];
     pub const SHADER_CLOSEST_HITS: &[&str] = &[env!("pathtracer.rchit.glsl")];
@@ -166,6 +167,7 @@ impl Pipeline {
 
         let pipeline = pipeline::Pipeline::new(
             ctx,
+            conf::NAME,
             descriptor_sets,
             layout,
             pipeline,

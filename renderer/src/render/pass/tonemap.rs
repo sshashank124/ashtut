@@ -15,6 +15,7 @@ use crate::gpu::{
 use super::common;
 
 mod conf {
+    pub const NAME: &str = "Tonemap";
     pub const SHADER_VERT: &str = env!("tonemap.vert.glsl");
     pub const SHADER_FRAG: &str = env!("tonemap.frag.glsl");
 }
@@ -35,12 +36,17 @@ impl Data {
     pub fn create(ctx: &Context, common: &common::Data) -> Self {
         let descriptors = Self::create_descriptors(ctx);
 
-        let input_image = image::Image::new(ctx, common.target.image, None);
+        let input_image = image::Image::new(
+            ctx,
+            format!("{} Input", conf::NAME),
+            common.target.image,
+            None,
+        );
 
         let data = Self {
             descriptors,
             input_image,
-            sampler: Sampler::create(ctx),
+            sampler: Sampler::create(ctx, conf::NAME),
         };
         data.bind_to_descriptor_sets(ctx);
         data
@@ -120,6 +126,7 @@ impl Pipeline {
 
         let pipeline = pipeline::Pipeline::new(
             ctx,
+            conf::NAME,
             descriptor_sets,
             layout,
             pipeline,

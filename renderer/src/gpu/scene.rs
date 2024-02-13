@@ -67,7 +67,7 @@ impl Scene {
             Buffer::create_with_staged_data(
                 ctx,
                 scope,
-                "Vertex Buffer",
+                "Vertices",
                 *create_info,
                 bytemuck::cast_slice(&scene.vertices),
             )
@@ -84,7 +84,7 @@ impl Scene {
             Buffer::create_with_staged_data(
                 ctx,
                 scope,
-                "Index Buffer",
+                "Indices",
                 *create_info,
                 bytemuck::cast_slice(&scene.indices),
             )
@@ -105,7 +105,7 @@ impl Scene {
         Buffer::create_with_staged_data(
             ctx,
             scope,
-            "Primitives Buffer",
+            "Primitives",
             *create_info,
             bytemuck::cast_slice(&scene.primitive_infos),
         )
@@ -123,7 +123,7 @@ impl Scene {
         Buffer::create_with_staged_data(
             ctx,
             scope,
-            "Materials Buffer",
+            "Materials",
             *create_info,
             bytemuck::cast_slice(&scene.materials),
         )
@@ -140,7 +140,7 @@ impl Scene {
         Buffer::create_with_staged_data(
             ctx,
             scope,
-            "Scene Desc Buffer",
+            "Scene Desc",
             *create_info,
             bytemuck::bytes_of(scene_desc),
         )
@@ -159,7 +159,7 @@ impl Scene {
             vec![Image::create_from_image(
                 ctx,
                 scope,
-                "Placeholder pixel",
+                "Placeholder Texture Pixel",
                 &image::RgbaImage::new(1, 1),
             )]
         } else {
@@ -187,7 +187,14 @@ impl Scene {
         };
         let textures = scene_textures
             .iter()
-            .map(|tex| Texture::for_image(ctx, &images[tex.image_index as usize]))
+            .enumerate()
+            .map(|(idx, tex)| {
+                Texture::for_image(
+                    ctx,
+                    format!("Texture - #{idx}"),
+                    &images[tex.image_index as usize],
+                )
+            })
             .collect();
 
         (images, textures)

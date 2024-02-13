@@ -10,7 +10,7 @@ pub struct QueryPool {
 }
 
 impl QueryPool {
-    pub fn create(ctx: &Context, q_type: vk::QueryType, count: u32) -> Self {
+    pub fn create(ctx: &Context, name: impl AsRef<str>, q_type: vk::QueryType, count: u32) -> Self {
         let info = vk::QueryPoolCreateInfo::builder()
             .query_type(q_type)
             .query_count(count);
@@ -19,6 +19,7 @@ impl QueryPool {
             ctx.create_query_pool(&info, None)
                 .expect("Failed to create query pool")
         };
+        ctx.set_debug_name(pool, String::from(name.as_ref()) + " - Query Pool");
 
         Self { pool, count }
     }

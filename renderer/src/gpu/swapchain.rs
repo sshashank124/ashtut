@@ -42,8 +42,15 @@ impl Swapchain {
                 .expect("Failed to get swapchain images")
         }
         .into_iter()
-        .map(|image| {
-            image::Image::new_of_format(ctx, image, ctx.surface.config.surface_format.format, None)
+        .enumerate()
+        .map(|(idx, image)| {
+            image::Image::new_of_format(
+                ctx,
+                format!("Swapchain - #{idx}"),
+                image,
+                ctx.surface.config.surface_format.format,
+                None,
+            )
         })
         .collect::<Vec<_>>();
 

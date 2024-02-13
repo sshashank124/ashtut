@@ -16,7 +16,7 @@ mod conf {
 pub struct Instance {
     pub entry: ash::Entry,
     instance: ash::Instance,
-    debug: Debug,
+    pub debug: Debug,
 }
 
 impl Instance {

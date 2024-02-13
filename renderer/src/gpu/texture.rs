@@ -8,8 +8,12 @@ pub struct Texture<const FORMAT: image::Format> {
 }
 
 impl<const FORMAT: image::Format> Texture<FORMAT> {
-    pub fn for_image(ctx: &Context, image: &image::Image<{ FORMAT }>) -> Self {
-        let sampler = Sampler::create(ctx);
+    pub fn for_image(
+        ctx: &Context,
+        name: impl AsRef<str>,
+        image: &image::Image<{ FORMAT }>,
+    ) -> Self {
+        let sampler = Sampler::create(ctx, name);
         Self {
             view: image.view,
             sampler,

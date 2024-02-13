@@ -10,6 +10,7 @@ mod surface;
 
 use std::ops::{Deref, DerefMut};
 
+use ash::vk;
 use winit::window::Window;
 
 use self::{device::Device, instance::Instance, physical_device::PhysicalDevice, surface::Surface};
@@ -45,6 +46,12 @@ impl Context {
 
     pub fn refresh_surface_capabilities(&mut self) -> bool {
         self.surface.refresh_capabilities(&self.physical_device)
+    }
+
+    pub fn set_debug_name(&self, object: impl vk::Handle, name: impl AsRef<str>) {
+        self.instance
+            .debug
+            .set_name(&self.device, object, name.as_ref());
     }
 }
 

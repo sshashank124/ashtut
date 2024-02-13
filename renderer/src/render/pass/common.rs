@@ -8,6 +8,7 @@ use crate::gpu::{
 };
 
 mod conf {
+    pub const NAME: &str = "Common";
     pub const MAX_NUM_TEXTURES: u32 = 128;
 }
 
@@ -28,7 +29,11 @@ impl Data {
             height: crate::app::conf::FRAME_RESOLUTION.1,
         };
 
-        let mut init_scope = OneshotScope::begin_on(ctx, ctx.queues.graphics());
+        let mut init_scope = OneshotScope::begin_on(
+            ctx,
+            format!("{} Initialization", conf::NAME),
+            ctx.queues.graphics(),
+        );
 
         let target = {
             let info = vk::ImageCreateInfo {
@@ -39,7 +44,7 @@ impl Data {
             image::Image::create(
                 ctx,
                 &init_scope,
-                "Intermediate Target",
+                format!("{} Target", conf::NAME),
                 &info,
                 Some(&image::BarrierInfo::GENERAL),
             )

@@ -16,16 +16,26 @@ pub struct Pipeline<const NUM_SETS: usize> {
 impl<const NUM_SETS: usize> Pipeline<{ NUM_SETS }> {
     pub fn new(
         ctx: &Context,
+        name: impl AsRef<str>,
         descriptor_sets: impl IntoIterator<Item = [vk::DescriptorSet; NUM_SETS]>,
         layout: vk::PipelineLayout,
         pipeline: vk::Pipeline,
         queue: &Queue,
         count: usize,
     ) -> Self {
-        let descriptor_sets = descriptor_sets.into_iter().collect();
+        let descriptor_sets = descriptor_sets.into_iter().collect::<Vec<_>>();
+
+        let name = String::from(name.as_ref()) + " - Pipeline";
+        for (i, sets) in descriptor_sets.iter().enumerate() {
+            for (j, set) in sets.iter().enumerate() {
+                ctx.set_debug_name(*set, format!("{name} - Descriptor Set - #{i}:#{j}"));
+            }
+        }
+        ctx.set_debug_name(layout, name.clone() + " - Layout");
+        ctx.set_debug_name(pipeline, &name);
 
         let commands = (0..count)
-            .map(|_| Commands::create_on_queue(ctx, queue))
+            .map(|i| Commands::create_on_queue(ctx, format!("{name} - #{i}"), queue))
             .collect();
 
         Self {

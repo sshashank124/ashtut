@@ -25,22 +25,24 @@ impl<const FORMAT: image::Format> Framebuffers<{ FORMAT }> {
     pub fn create(
         ctx: &mut Context,
         scope: &OneshotScope,
-        name: &str,
+        name: impl AsRef<str>,
         render_pass: vk::RenderPass,
         resolution: vk::Extent2D,
         colors: &[image::Image<{ FORMAT }>],
     ) -> Self {
+        let name = String::from(name.as_ref()) + " - Framebuffers";
         let depth = {
             let info = vk::ImageCreateInfo {
                 extent: resolution.into(),
                 ..Default::default()
             };
-            image::Image::create(ctx, scope, &format!("{name} [DEPTH]"), &info, None)
+            image::Image::create(ctx, scope, name.clone() + " - Depth", &info, None)
         };
 
         let framebuffers = colors
             .iter()
-            .map(|image| {
+            .enumerate()
+            .map(|(idx, image)| {
                 let attachments = [image.view, depth.view];
                 let info = vk::FramebufferCreateInfo::builder()
                     .render_pass(render_pass)
@@ -48,10 +50,14 @@ impl<const FORMAT: image::Format> Framebuffers<{ FORMAT }> {
                     .width(resolution.width)
                     .height(resolution.height)
                     .layers(1);
-                unsafe { ctx.create_framebuffer(&info, None) }
+                let fb = unsafe {
+                    ctx.create_framebuffer(&info, None)
+                        .expect("Failed to create framebuffer")
+                };
+                ctx.set_debug_name(fb, format!("{name}  - #{idx}"));
+                fb
             })
-            .collect::<Result<Vec<_>, _>>()
-            .expect("Failed to create framebuffers");
+            .collect();
 
         Self {
             depth,

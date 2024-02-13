@@ -45,7 +45,7 @@ impl Renderer {
 
         let pathtracer_pipeline = pathtracer::Pipeline::create(ctx, &common);
 
-        let init_scope = OneshotScope::begin_on(ctx, ctx.queues.transfer());
+        let init_scope = OneshotScope::begin_on(ctx, "Initialization", ctx.queues.transfer());
 
         let rasterizer_pipeline = rasterizer::Pipeline::create(ctx, &init_scope, &common);
         let tonemap_pipeline = tonemap::Pipeline::create(ctx, &common);
@@ -140,7 +140,7 @@ impl Renderer {
         unsafe {
             self.swapchain.destroy_with(ctx);
         }
-        let init_scope = OneshotScope::begin_on(ctx, ctx.queues.transfer());
+        let init_scope = OneshotScope::begin_on(ctx, "Initialization", ctx.queues.transfer());
         self.swapchain = Swapchain::create(ctx, &init_scope, self.tonemap_pipeline.render_pass);
         init_scope.finish(ctx);
     }

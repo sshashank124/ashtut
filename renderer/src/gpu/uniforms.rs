@@ -17,7 +17,7 @@ impl Uniforms {
 
         let buffer = Buffer::create(
             ctx,
-            "UniformBuffer",
+            "Uniforms",
             *buffer_info,
             gpu_allocator::MemoryLocation::CpuToGpu,
         );

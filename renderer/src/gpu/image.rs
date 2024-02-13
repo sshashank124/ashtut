@@ -38,6 +38,7 @@ pub struct BarrierInfo {
 impl<const FORMAT: Format> Image<FORMAT> {
     pub fn new_of_format(
         ctx: &Context,
+        name: impl AsRef<str>,
         image: vk::Image,
         format: vk::Format,
         allocation: Option<alloc::Allocation>,
@@ -54,6 +55,7 @@ impl<const FORMAT: Format> Image<FORMAT> {
                     .expect("Failed to create image view")
             }
         };
+        ctx.set_debug_name(view, String::from(name.as_ref()) + " - Image View");
 
         Self {
             image,
@@ -62,17 +64,23 @@ impl<const FORMAT: Format> Image<FORMAT> {
         }
     }
 
-    pub fn new(ctx: &Context, image: vk::Image, allocation: Option<alloc::Allocation>) -> Self {
-        Self::new_of_format(ctx, image, FORMAT.into(), allocation)
+    pub fn new(
+        ctx: &Context,
+        name: impl AsRef<str>,
+        image: vk::Image,
+        allocation: Option<alloc::Allocation>,
+    ) -> Self {
+        Self::new_of_format(ctx, name, image, FORMAT.into(), allocation)
     }
 
     pub fn create(
         ctx: &mut Context,
         scope: &OneshotScope,
-        name: &str,
+        name: impl AsRef<str>,
         info: &vk::ImageCreateInfo,
         to: Option<&BarrierInfo>,
     ) -> Self {
+        let name = String::from(name.as_ref()) + " - Image";
         let image_info = vk::ImageCreateInfo {
             image_type: vk::ImageType::TYPE_2D,
             mip_levels: 1,
@@ -89,10 +97,12 @@ impl<const FORMAT: Format> Image<FORMAT> {
             ctx.create_image(&image_info, None)
                 .expect("Failed to create image")
         };
+        ctx.set_debug_name(image, &name);
 
         let requirements = unsafe { ctx.get_image_memory_requirements(image) };
+        let allocation_name = name.clone() + " - Allocation";
         let allocation_create_info = alloc::AllocationCreateDesc {
-            name,
+            name: &allocation_name,
             requirements,
             location: gpu_allocator::MemoryLocation::GpuOnly,
             linear: false,
@@ -110,7 +120,7 @@ impl<const FORMAT: Format> Image<FORMAT> {
                 .expect("Failed to bind memory");
         }
 
-        let image = Self::new(ctx, image, Some(allocation));
+        let image = Self::new(ctx, name, image, Some(allocation));
 
         if let Some(to) = to {
             image.transition_layout(ctx, scope, &BarrierInfo::INIT, to);
@@ -178,12 +188,13 @@ impl Image<{ Format::Color }> {
     pub fn create_from_image(
         ctx: &mut Context,
         scope: &mut OneshotScope,
-        name: &str,
+        name: impl AsRef<str>,
         img: &image::RgbaImage,
     ) -> Self {
+        let name = String::from(name.as_ref());
         let staging = {
             let info = vk::BufferCreateInfo::builder().usage(vk::BufferUsageFlags::TRANSFER_SRC);
-            Buffer::create_with_data(ctx, &format!("{name} [STAGING]"), *info, img)
+            Buffer::create_with_data(ctx, name.clone() + " - Staging", *info, img)
         };
 
         let extent = vk::Extent3D {

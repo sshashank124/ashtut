@@ -1,4 +1,4 @@
-use std::{collections::HashSet, ffi::c_void};
+use std::{collections::HashSet, ffi};
 
 use ash::vk;
 
@@ -6,12 +6,8 @@ use super::Destroy;
 
 mod conf {
     pub const VALIDATE_LAYERS: bool = cfg!(debug_assertions);
-    pub const VALIDATION_LAYERS: &[*const std::ffi::c_char] = unsafe {
-        &[
-            std::ffi::CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0")
-                .as_ptr(),
-        ]
-    };
+    pub const VALIDATION_LAYERS: &[*const std::ffi::c_char] =
+        &[crate::cstr!("VK_LAYER_KHRONOS_validation").as_ptr()];
 }
 
 pub struct Debug {
@@ -40,6 +36,24 @@ impl Debug {
         Self {
             debug_utils,
             debug_messenger,
+        }
+    }
+
+    pub fn set_name<H: vk::Handle>(&self, device: &ash::Device, object: H, name: &str) {
+        if !conf::VALIDATE_LAYERS {
+            return;
+        }
+
+        let object_name = ffi::CString::new(name).unwrap();
+        let name_info = vk::DebugUtilsObjectNameInfoEXT::builder()
+            .object_type(H::TYPE)
+            .object_handle(object.as_raw())
+            .object_name(&object_name);
+
+        unsafe {
+            self.debug_utils
+                .set_debug_utils_object_name(device.handle(), &name_info)
+                .expect("Failed to set object debug name");
         }
     }
 
@@ -107,7 +121,7 @@ unsafe extern "system" fn debug_callback(
     message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
     message_type: vk::DebugUtilsMessageTypeFlagsEXT,
     p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
-    _p_user_data: *mut c_void,
+    _p_user_data: *mut ffi::c_void,
 ) -> vk::Bool32 {
     let message = crate::util::bytes_to_string((*p_callback_data).p_message);
     println!("[{message_severity:?}][{message_type:?}] {message}");

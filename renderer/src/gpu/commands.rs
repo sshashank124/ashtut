@@ -17,7 +17,8 @@ pub struct CommandsT<const MULTI_USE: bool> {
 }
 
 impl<const MULTI_USE: bool> CommandsT<{ MULTI_USE }> {
-    pub fn create_on_queue(ctx: &Context, queue: &Queue) -> Self {
+    pub fn create_on_queue(ctx: &Context, name: impl AsRef<str>, queue: &Queue) -> Self {
+        let name = String::from(name.as_ref());
         let pool = {
             let transient_flag = if MULTI_USE {
                 vk::CommandPoolCreateFlags::empty()
@@ -32,6 +33,7 @@ impl<const MULTI_USE: bool> CommandsT<{ MULTI_USE }> {
                     .expect("Failed to create command pool")
             }
         };
+        ctx.set_debug_name(pool, name.clone() + " - Command Pool");
 
         let buffer = unsafe {
             ctx.allocate_command_buffers(&vk::CommandBufferAllocateInfo {
@@ -41,6 +43,7 @@ impl<const MULTI_USE: bool> CommandsT<{ MULTI_USE }> {
             })
             .expect("Failed to allocate command buffer")[0]
         };
+        ctx.set_debug_name(buffer, name + " - Command Buffer");
 
         Self {
             queue: **queue,

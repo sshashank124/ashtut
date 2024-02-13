@@ -16,6 +16,7 @@ use crate::gpu::{
 use super::common;
 
 pub mod conf {
+    pub const NAME: &str = "Rasterizer";
     pub const SHADER_VERT: &str = env!("rasterizer.vert.glsl");
     pub const SHADER_FRAG: &str = env!("rasterizer.frag.glsl");
 }
@@ -33,7 +34,7 @@ impl Pipeline {
         let target = Framebuffers::create(
             ctx,
             scope,
-            "Render target",
+            format!("{} Target", conf::NAME),
             render_pass,
             common.resolution,
             std::slice::from_ref(&common.target),
@@ -45,6 +46,7 @@ impl Pipeline {
 
         let pipeline = pipeline::Pipeline::new(
             ctx,
+            conf::NAME,
             descriptor_sets,
             layout,
             pipeline,

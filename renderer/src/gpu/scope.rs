@@ -24,8 +24,8 @@ impl<const MULTI_USE: bool> Scope<{ MULTI_USE }> {
         }
     }
 
-    pub fn begin_on(ctx: &Context, queue: &Queue) -> Self {
-        let scope = Self::create(CommandsT::create_on_queue(ctx, queue));
+    pub fn begin_on(ctx: &Context, name: impl AsRef<str>, queue: &Queue) -> Self {
+        let scope = Self::create(CommandsT::create_on_queue(ctx, name, queue));
         scope.commands.begin_recording(ctx);
         scope
     }

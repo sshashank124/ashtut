@@ -47,7 +47,8 @@ unsafe impl bytemuck::Pod for Instance {}
 
 impl AccelerationStructures {
     pub fn build(ctx: &mut Context, scene: &Scene) -> Self {
-        let mut scope = FlushableScope::begin_on(ctx, ctx.queues.compute());
+        let mut scope =
+            FlushableScope::begin_on(ctx, "Build Acceleration Structures", ctx.queues.compute());
         let blases = Self::build_blases(ctx, &mut scope, scene);
         let tlas = Self::build_tlas(ctx, &mut scope, scene, &blases);
         scope.finish(ctx);
@@ -67,7 +68,7 @@ impl AccelerationStructures {
         let mut build_info = BuildInfo::for_geometry(ctx, false, &geometry_info);
         scope.add_resource(instances_info);
 
-        AccelerationStructure::build(ctx, scope, &mut build_info, None)
+        AccelerationStructure::build(ctx, scope, "Top Level", &mut build_info, None)
     }
 
     pub fn build_blases(
@@ -84,10 +85,16 @@ impl AccelerationStructures {
             .max()
             .unwrap();
 
-        let scratch_address = AccelerationStructure::create_scratch(ctx, scope, max_scratch_size);
+        let scratch_address =
+            AccelerationStructure::create_scratch(ctx, scope, "Bottom Level", max_scratch_size);
 
         let query_type = vk::QueryType::ACCELERATION_STRUCTURE_COMPACTED_SIZE_KHR;
-        let query_pool = QueryPool::create(ctx, query_type, build_infos.len() as _);
+        let query_pool = QueryPool::create(
+            ctx,
+            "Acceleration Structure Compacted Size",
+            query_type,
+            build_infos.len() as _,
+        );
         query_pool.reset(ctx, scope);
 
         let mut uncompacted = Vec::with_capacity(build_infos.len());
@@ -96,6 +103,7 @@ impl AccelerationStructures {
             uncompacted.push(AccelerationStructure::build(
                 ctx,
                 scope,
+                &idx.to_string(),
                 build_info,
                 Some(scratch_address),
             ));
@@ -133,7 +141,11 @@ impl AccelerationStructures {
 
         for (idx, build_info) in build_infos.iter_mut().enumerate() {
             build_info.sizes.acceleration_structure_size = compact_sizes[idx];
-            compacted.push(AccelerationStructure::init(ctx, build_info));
+            compacted.push(AccelerationStructure::init(
+                ctx,
+                &idx.to_string(),
+                build_info,
+            ));
 
             unsafe {
                 let copy_info = vk::CopyAccelerationStructureInfoKHR::builder()
@@ -155,10 +167,12 @@ impl AccelerationStructures {
 }
 
 impl AccelerationStructure {
-    fn init(ctx: &mut Context, build_info: &BuildInfo) -> Self {
+    fn init(ctx: &mut Context, name: impl AsRef<str>, build_info: &BuildInfo) -> Self {
+        let object_name = String::from(name.as_ref()) + " - Acceleration Structure";
+
         let buffer = Buffer::create(
             ctx,
-            "Acceleration Structure - Buffer",
+            &object_name,
             vk::BufferCreateInfo {
                 usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                     | vk::BufferUsageFlags::STORAGE_BUFFER
@@ -180,6 +194,7 @@ impl AccelerationStructure {
                 .create_acceleration_structure(&create_info, None)
                 .expect("Failed to create acceleration structure")
         };
+        ctx.set_debug_name(accel, object_name);
 
         let address = unsafe {
             let info = vk::AccelerationStructureDeviceAddressInfoKHR::builder()
@@ -199,14 +214,15 @@ impl AccelerationStructure {
     fn build(
         ctx: &mut Context,
         scope: &mut FlushableScope,
+        name: &str,
         build_info: &mut BuildInfo,
         scratch_address: Option<vk::DeviceAddress>,
     ) -> Self {
         build_info.geometry.scratch_data.device_address = scratch_address.unwrap_or_else(|| {
-            Self::create_scratch(ctx, scope, build_info.sizes.build_scratch_size)
+            Self::create_scratch(ctx, scope, name, build_info.sizes.build_scratch_size)
         });
 
-        let accel = Self::init(ctx, build_info);
+        let accel = Self::init(ctx, name, build_info);
         build_info.geometry.dst_acceleration_structure = accel.accel;
 
         unsafe {
@@ -223,6 +239,7 @@ impl AccelerationStructure {
     fn create_scratch(
         ctx: &mut Context,
         scope: &mut FlushableScope,
+        name: impl AsRef<str>,
         size: vk::DeviceSize,
     ) -> vk::DeviceAddress {
         let min_alignment = ctx
@@ -233,7 +250,7 @@ impl AccelerationStructure {
 
         let scratch = Buffer::create(
             ctx,
-            "Acceleration Structure - Build Scratch",
+            String::from(name.as_ref()) + " - Acceleration Structure Build Scratch",
             vk::BufferCreateInfo {
                 usage: vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                     | vk::BufferUsageFlags::STORAGE_BUFFER,
@@ -394,7 +411,7 @@ impl InstancesInfo {
 
         let buffer = Buffer::create_with_data(
             ctx,
-            "Acceleration Structure - Instances",
+            "Instances",
             vk::BufferCreateInfo {
                 usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
                     | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
