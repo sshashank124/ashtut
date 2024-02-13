@@ -1,14 +1,40 @@
+// pcg4d
 struct Rng {
-  uint state;
+  uvec4 state;
 };
 
-uint rng_uint(inout Rng rng) {
-  rng.state ^= rng.state << 13;
-  rng.state ^= rng.state >> 17;
-  rng.state ^= rng.state << 5;
-  return rng.state;
+Rng rng_init(uvec2 pixel_xy, uint frame) {
+  return Rng(uvec4(pixel_xy, frame, 0));
+}
+
+uvec4 rng_uint4(inout Rng rng) {
+  uvec4 v = rng.state * 1664525u + 1013904223u;
+
+  v.x += v.y * v.w; 
+  v.y += v.z * v.x; 
+  v.z += v.x * v.y; 
+  v.w += v.y * v.z;
+
+  v ^= v >> 16u;
+
+  v.x += v.y * v.w; 
+  v.y += v.z * v.x; 
+  v.z += v.x * v.y; 
+  v.w += v.y * v.z;
+
+  rng.state = v;
+  return v;
+}
+
+float uintToFloat(uint x) {
+  return uintBitsToFloat((x >> 9) | 0x3f800000) - 1.0f;
 }
 
 float rng_float(inout Rng rng) {
-  return uintBitsToFloat((rng_uint(rng) >> 9) | 0x3f800000) - 1;
+  return uintToFloat(rng_uint4(rng).x);
+}
+
+vec2 rng_vec2(inout Rng rng) {
+  uvec4 v = rng_uint4(rng);
+  return vec2(uintToFloat(v.x), uintToFloat(v.y));
 }

@@ -16,15 +16,14 @@ layout(set=1, binding=1, rgba32f) uniform image2D output_image;
 layout(location=0) rayPayloadEXT Payload payload;
 
 void main() {
-  const vec2 uv = (vec2(gl_LaunchIDEXT.xy) + vec2(0.5)) / vec2(gl_LaunchSizeEXT.xy);
+  Rng rng = rng_init(gl_LaunchIDEXT.xy, constants.frame);
+
+  const vec2 uv = (vec2(gl_LaunchIDEXT.xy) + rng_vec2(rng)) / vec2(gl_LaunchSizeEXT.xy);
   const vec4 origin = uniforms.camera.view.inverse * vec4(0, 0, 0, 1);
   const vec4 target = uniforms.camera.proj.inverse * vec4(2 * uv - 1, 1, 1);
   const vec4 direction = uniforms.camera.view.inverse * vec4(normalize(target.xyz), 0);
 
-  const uint rng_seed = gl_LaunchSizeEXT.x * (gl_LaunchSizeEXT.y * constants.frame + gl_LaunchIDEXT.y)
-                        + gl_LaunchIDEXT.x;
-
-  payload = Payload(Ray(origin, direction), vec3(0), Rng(rng_seed), vec3(0), 0);
+  payload = Payload(Ray(origin, direction), vec3(0), rng, vec3(0), 0);
 
   vec3 total = vec3(0);
   vec3 weight = vec3(1);
