@@ -64,21 +64,24 @@ impl FileLoader for Gltf {
             *processed_materials
                 .entry(material.index().unwrap_or_default())
                 .or_insert_with(|| {
-                    let color_texture = material
-                        .pbr_metallic_roughness()
+                    let pbr = material.pbr_metallic_roughness();
+                    let color_texture = pbr
                         .base_color_texture()
                         .map_or(-1, |tex_info| handle_texture(scene, tex_info) as _);
                     let emittance_texture = material
                         .emissive_texture()
                         .map_or(-1, |tex_info| handle_texture(scene, tex_info) as _);
+                    let metallic_roughness_texture = pbr
+                        .metallic_roughness_texture()
+                        .map_or(-1, |tex_info| handle_texture(scene, tex_info) as _);
                     scene.data.materials.push(Material {
-                        color: glam::Vec4::from(
-                            material.pbr_metallic_roughness().base_color_factor(),
-                        )
-                        .truncate(),
+                        color: glam::Vec4::from(pbr.base_color_factor()).truncate(),
                         color_texture,
                         emittance: material.emissive_factor().into(),
                         emittance_texture,
+                        metallic: pbr.metallic_factor(),
+                        roughness: pbr.roughness_factor(),
+                        metallic_roughness_texture,
                     });
                     scene.data.materials.len() - 1
                 })

@@ -18,6 +18,9 @@ struct Material {
   int color_texture;
   vec3 emittance;
   int emittance_texture;
+  float metallic;
+  float roughness;
+  int metallic_roughness_texture;
 };
 
 struct PrimitiveInfo {

@@ -27,6 +27,9 @@ pub struct Material {
     pub color_texture: i32,
     pub emittance: glam::Vec3,
     pub emittance_texture: i32,
+    pub metallic: f32,
+    pub roughness: f32,
+    pub metallic_roughness_texture: i32,
 }
 
 #[repr(C)]

@@ -81,16 +81,16 @@ impl Data {
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
                     .descriptor_count(1)
                     .stage_flags(
-                        vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::CLOSEST_HIT_KHR,
+                        vk::ShaderStageFlags::FRAGMENT
+                            | vk::ShaderStageFlags::RAYGEN_KHR
+                            | vk::ShaderStageFlags::CLOSEST_HIT_KHR,
                     )
                     .build(),
                 vk::DescriptorSetLayoutBinding::builder()
                     .binding(2)
                     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                     .descriptor_count(conf::MAX_NUM_TEXTURES)
-                    .stage_flags(
-                        vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::CLOSEST_HIT_KHR,
-                    )
+                    .stage_flags(vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::RAYGEN_KHR)
                     .build(),
             ];
             let binding_flags = [

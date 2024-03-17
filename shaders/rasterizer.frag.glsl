@@ -23,11 +23,11 @@ void main() {
   Materials materials = Materials(scene_desc.materials_address);
   Material material = materials.m[constants.material_index];
   vec3 diffuse = material.color;
-  if (material.color_texture >= 0) {
+  if (material.color_texture > -1) {
     diffuse *= texture(textures[material.color_texture], in_data.tex_coords.xy).xyz;
   }
   vec3 emittance = material.emittance;
-  if (material.emittance_texture >= 0) {
+  if (material.emittance_texture > -1) {
     emittance *= texture(textures[material.emittance_texture], in_data.tex_coords.xy).xyz;
   }
   color = vec4(diffuse + emittance, 1);

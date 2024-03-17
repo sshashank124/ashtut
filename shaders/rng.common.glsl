@@ -1,10 +1,13 @@
+#ifndef RNG_COMMON_GLSL_
+#define RNG_COMMON_GLSL_
+
 // pcg4d
 struct Rng {
   uvec4 state;
 };
 
-Rng rng_init(uvec2 pixel_xy, uint frame) {
-  return Rng(uvec4(pixel_xy, frame, 0));
+Rng rng_init(uvec2 pixel, uint frame) {
+  return Rng(uvec4(pixel, frame, 0));
 }
 
 uvec4 rng_uint4(inout Rng rng) {
@@ -38,3 +41,5 @@ vec2 rng_vec2(inout Rng rng) {
   uvec4 v = rng_uint4(rng);
   return vec2(uintToFloat(v.x), uintToFloat(v.y));
 }
+
+#endif

@@ -3,9 +3,8 @@
 
 #include "ray.common.glsl"
 
-layout(location=0) rayPayloadInEXT Payload payload;
+layout(location=0) rayPayloadInEXT HitInfo payload;
 
 void main() {
-  payload.hit_value = ENV_COLOR;
-  payload.depth = MAX_RECURSE_DEPTH;
+  payload.hit = false;
 }
