@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "engine",
     "renderer",
     "scene",
     "shared",
@@ -18,6 +19,7 @@ repository = "https://github.com/sshashank124/tsunami"
 bytemuck = { version = "1.14", features = ["derive"] }
 glam = "0.25"
 glsl = { path = "glsl/glsl" }
+renderer = { path = "renderer" }
 scene = { path = "scene" }
 shared = { path = "shared" }
 serde = { version = "1.0", default-features = false }
@@ -37,9 +39,11 @@ cast_possible_truncation = { level = "allow", priority = 1 }
 cast_possible_wrap = { level = "allow", priority = 1 }
 cast_precision_loss = { level = "allow", priority = 1 }
 default_trait_access = { level = "allow", priority = 1 }
+missing_errors_doc = { level = "allow", priority = 1 }
 missing_panics_doc = { level = "allow", priority = 1 }
 module_name_repetitions = { level = "allow", priority = 1 }
 must_use_candidate = { level = "allow", priority = 1 }
+struct_excessive_bools = { level = "allow", priority = 1 }
 struct_field_names = { level = "allow", priority = 1 }
 
 [profile.release]

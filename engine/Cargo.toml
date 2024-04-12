@@ -1,0 +1,18 @@
+cargo-features = ["edition2024"]
+
+[package]
+name = "engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+glam = { workspace = true }
+renderer = { workspace = true }
+scene = { workspace = true }
+shared = { workspace = true }
+winit = "0.29"
+
+[lints]
+workspace = true

@@ -8,14 +8,14 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-ash = { version = "0.37", features = ["linked"] }
+ash = { version = "0.38", features = ["linked"] }
 bytemuck = { workspace = true }
 glam = { workspace = true }
-gpu-allocator = { version = "0.23", default-features = false, features = [ "vulkan" ] }
-image = "0.24"
+gpu-allocator = { git = "https://github.com/Traverse-Research/gpu-allocator.git", branch = "ash-0.38", default-features = false, features = ["vulkan"] }
+image = "0.25"
+raw-window-handle = "*"
 scene = { workspace = true }
 shared = { workspace = true }
-winit = "0.29"
 
 [lints]
 workspace = true
