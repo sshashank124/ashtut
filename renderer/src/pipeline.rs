@@ -1,4 +1,4 @@
-use std::{ops::Deref, slice};
+use std::ops::Deref;
 
 use ash::vk;
 
@@ -54,15 +54,13 @@ impl<const NUM_SETS: usize> Pipeline<{ NUM_SETS }> {
 
     pub fn submit_pipeline(&self, ctx: &Context, idx: usize, sync_info: &SyncInfo) {
         let mut submit_info = vk::SubmitInfo::default();
-        if let Some(wait_on) = sync_info.wait_on.as_ref() {
-            submit_info.wait_semaphore_count = 1;
-            submit_info.p_wait_dst_stage_mask =
-                [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT].as_ptr();
-            submit_info.p_wait_semaphores = slice::from_ref(wait_on).as_ptr();
+        if !sync_info.wait_on.is_empty() {
+            submit_info = submit_info
+                .wait_semaphores(&sync_info.wait_on)
+                .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT]);
         }
-        if let Some(signal_to) = sync_info.signal_to.as_ref() {
-            submit_info.signal_semaphore_count = 1;
-            submit_info.p_signal_semaphores = slice::from_ref(signal_to).as_ptr();
+        if !sync_info.signal_to.is_empty() {
+            submit_info = submit_info.signal_semaphores(&sync_info.signal_to);
         }
 
         self.commands[idx].submit(ctx, &submit_info, sync_info.fence);

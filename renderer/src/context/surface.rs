@@ -14,7 +14,7 @@ pub mod conf {
         format: vk::Format::B8G8R8A8_SRGB,
         color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
     };
-    pub const PREFERRED_PRESENT_MODE: vk::PresentModeKHR = vk::PresentModeKHR::MAILBOX;
+    pub const PREFERRED_PRESENT_MODE: vk::PresentModeKHR = vk::PresentModeKHR::FIFO_RELAXED;
     pub const FALLBACK_PRESENT_MODE: vk::PresentModeKHR = vk::PresentModeKHR::FIFO;
 }
 

@@ -7,6 +7,7 @@ pub struct Features {
     pub v_1_0: V10Features,
     pub v_1_1: V11Features,
     pub v_1_2: V12Features,
+    pub v_1_3: V13Features,
     // Ray Tracing
     pub acceleration_structure: AccelerationStructureFeatures,
     pub ray_tracing_pipeline: RayTracingPipelineFeatures,
@@ -29,6 +30,10 @@ pub struct V12Features {
     uniform_and_storage_buffer8_bit_access: bool,
     vulkan_memory_model: bool,
 }
+pub struct V13Features {
+    dynamic_rendering: bool,
+    synchronization2: bool,
+}
 pub struct AccelerationStructureFeatures {
     acceleration_structure: bool,
 }
@@ -42,12 +47,14 @@ impl Features {
         let mut acceleration_structure =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
 
+        let mut v_1_3 = vk::PhysicalDeviceVulkan13Features::default();
         let mut v_1_2 = vk::PhysicalDeviceVulkan12Features::default();
         let mut v_1_1 = vk::PhysicalDeviceVulkan11Features::default();
 
         let mut v_1_0 = vk::PhysicalDeviceFeatures2::default()
             .push_next(&mut ray_tracing_pipeline)
             .push_next(&mut acceleration_structure)
+            .push_next(&mut v_1_3)
             .push_next(&mut v_1_2)
             .push_next(&mut v_1_1);
 
@@ -57,6 +64,7 @@ impl Features {
             v_1_0: V10Features::from(v_1_0),
             v_1_1: V11Features::from(v_1_1),
             v_1_2: V12Features::from(v_1_2),
+            v_1_3: V13Features::from(v_1_3),
             acceleration_structure: AccelerationStructureFeatures::from(acceleration_structure),
             ray_tracing_pipeline: RayTracingPipelineFeatures::from(ray_tracing_pipeline),
         }
@@ -64,13 +72,14 @@ impl Features {
 
     pub fn required<'a>() -> (
         vk::PhysicalDeviceFeatures2<'a>,
-        [Box<dyn vk::ExtendsPhysicalDeviceFeatures2>; 4],
+        [Box<dyn vk::ExtendsPhysicalDeviceFeatures2>; 5],
     ) {
         (
             vk::PhysicalDeviceFeatures2::default().features(V10Features::required()),
             [
                 Box::new(V11Features::required()),
                 Box::new(V12Features::required()),
+                Box::new(V13Features::required()),
                 Box::new(AccelerationStructureFeatures::required()),
                 Box::new(RayTracingPipelineFeatures::required()),
             ],
@@ -81,6 +90,7 @@ impl Features {
         self.v_1_0.supports_requirements()
             && self.v_1_1.supports_requirements()
             && self.v_1_2.supports_requirements()
+            && self.v_1_3.supports_requirements()
             && self.acceleration_structure.supports_requirements()
             && self.ray_tracing_pipeline.supports_requirements()
     }
@@ -130,6 +140,18 @@ impl V12Features {
             .scalar_block_layout(true)
             .uniform_and_storage_buffer8_bit_access(true)
             .vulkan_memory_model(true)
+    }
+}
+
+impl V13Features {
+    pub const fn supports_requirements(&self) -> bool {
+        self.dynamic_rendering && self.synchronization2
+    }
+
+    pub fn required<'a>() -> vk::PhysicalDeviceVulkan13Features<'a> {
+        vk::PhysicalDeviceVulkan13Features::default()
+            .dynamic_rendering(true)
+            .synchronization2(true)
     }
 }
 
@@ -183,6 +205,15 @@ impl From<vk::PhysicalDeviceVulkan12Features<'_>> for V12Features {
             scalar_block_layout: f.scalar_block_layout > 0,
             uniform_and_storage_buffer8_bit_access: f.uniform_and_storage_buffer8_bit_access > 0,
             vulkan_memory_model: f.vulkan_memory_model > 0,
+        }
+    }
+}
+
+impl From<vk::PhysicalDeviceVulkan13Features<'_>> for V13Features {
+    fn from(f: vk::PhysicalDeviceVulkan13Features) -> Self {
+        Self {
+            dynamic_rendering: f.dynamic_rendering > 0,
+            synchronization2: f.synchronization2 > 0,
         }
     }
 }

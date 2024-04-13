@@ -7,41 +7,39 @@ pub mod conf {
 }
 
 pub struct SyncState {
-    image_available: Vec<vk::Semaphore>,
-    render_finished: Vec<vk::Semaphore>,
-    in_flight: Vec<vk::Fence>,
+    frame_available: [vk::Semaphore; conf::MAX_FRAMES_IN_FLIGHT],
+    frame_ready: [vk::Semaphore; conf::MAX_FRAMES_IN_FLIGHT],
+    in_flight: [vk::Fence; conf::MAX_FRAMES_IN_FLIGHT],
     pub current_frame: usize,
 }
 
 impl SyncState {
     pub fn create(ctx: &Context) -> Self {
-        let mut image_available = Vec::with_capacity(conf::MAX_FRAMES_IN_FLIGHT);
-        let mut render_finished = Vec::with_capacity(conf::MAX_FRAMES_IN_FLIGHT);
-        let mut in_flight = Vec::with_capacity(conf::MAX_FRAMES_IN_FLIGHT);
+        let frame_available =
+            core::array::from_fn(|i| ctx.create_semaphore(format!("image_available#{i}")));
 
-        for _ in 0..conf::MAX_FRAMES_IN_FLIGHT {
-            image_available.push(ctx.create_semaphore("image_available"));
-            render_finished.push(ctx.create_semaphore("render_finished"));
-            in_flight.push(ctx.create_fence("in_flight", true));
-        }
+        let frame_ready =
+            core::array::from_fn(|i| ctx.create_semaphore(format!("render_finished#{i}")));
+
+        let in_flight = core::array::from_fn(|i| ctx.create_fence(format!("in_flight#{i}"), true));
 
         Self {
-            image_available,
-            render_finished,
+            frame_available,
+            frame_ready,
             in_flight,
             current_frame: 0,
         }
     }
 
-    pub fn image_available_semaphore(&self) -> vk::Semaphore {
-        self.image_available[self.current_frame]
+    pub const fn frame_available_semaphore(&self) -> vk::Semaphore {
+        self.frame_available[self.current_frame]
     }
 
-    pub fn render_finished_semaphore(&self) -> vk::Semaphore {
-        self.render_finished[self.current_frame]
+    pub const fn frame_ready_semaphore(&self) -> vk::Semaphore {
+        self.frame_ready[self.current_frame]
     }
 
-    pub fn in_flight_fence(&self) -> vk::Fence {
+    pub const fn in_flight_fence(&self) -> vk::Fence {
         self.in_flight[self.current_frame]
     }
 
@@ -53,8 +51,8 @@ impl SyncState {
 impl Destroy<Context> for SyncState {
     unsafe fn destroy_with(&mut self, ctx: &mut Context) {
         for i in 0..conf::MAX_FRAMES_IN_FLIGHT {
-            ctx.destroy_semaphore(self.image_available[i], None);
-            ctx.destroy_semaphore(self.render_finished[i], None);
+            ctx.destroy_semaphore(self.frame_available[i], None);
+            ctx.destroy_semaphore(self.frame_ready[i], None);
             ctx.destroy_fence(self.in_flight[i], None);
         }
     }

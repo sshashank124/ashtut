@@ -115,7 +115,11 @@ impl Renderer {
                 .expect("Failed to wait for fence");
         }
 
-        let sync_info = SyncInfo::default();
+        let sync_info = SyncInfo {
+            wait_on: vec![],
+            signal_to: vec![],
+            fence: None,
+        };
         if self.use_pathtracer {
             self.pathtracer_pipeline
                 .run(&self.ctx, &self.common, self.frame, &sync_info);
@@ -126,7 +130,7 @@ impl Renderer {
 
         let (image_index, needs_recreating) = self
             .swapchain
-            .get_next_image(&self.ctx, self.state.image_available_semaphore());
+            .get_next_image(&self.ctx, self.state.frame_available_semaphore());
         let image_index = image_index as usize;
 
         let needs_recreating = needs_recreating || {
@@ -140,8 +144,8 @@ impl Renderer {
                 &self.ctx,
                 image_index,
                 &SyncInfo {
-                    wait_on: Some(self.state.image_available_semaphore()),
-                    signal_to: Some(self.state.render_finished_semaphore()),
+                    wait_on: vec![self.state.frame_available_semaphore()],
+                    signal_to: vec![self.state.frame_ready_semaphore()],
                     fence: Some(self.state.in_flight_fence()),
                 },
                 &self.swapchain.target,
@@ -150,7 +154,7 @@ impl Renderer {
             self.swapchain.present_to_when(
                 &self.ctx,
                 image_index,
-                slice::from_ref(&self.state.render_finished_semaphore()),
+                slice::from_ref(&self.state.frame_ready_semaphore()),
             )
         };
 

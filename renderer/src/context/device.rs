@@ -79,16 +79,16 @@ impl Device {
         }
     }
 
-    pub fn create_semaphore(&self, name: &str) -> vk::Semaphore {
+    pub fn create_semaphore(&self, name: impl AsRef<str>) -> vk::Semaphore {
         let create_info = vk::SemaphoreCreateInfo::default();
         unsafe {
             self.device
                 .create_semaphore(&create_info, None)
-                .unwrap_or_else(|err| panic!("Failed to create `{name}` semaphore: {err}"))
+                .unwrap_or_else(|err| panic!("Failed to create `{}` semaphore: {err}", name.as_ref()))
         }
     }
 
-    pub fn create_fence(&self, name: &str, signaled: bool) -> vk::Fence {
+    pub fn create_fence(&self, name: impl AsRef<str>, signaled: bool) -> vk::Fence {
         let create_info = vk::FenceCreateInfo::default().flags(if signaled {
             vk::FenceCreateFlags::SIGNALED
         } else {
@@ -97,7 +97,7 @@ impl Device {
         unsafe {
             self.device
                 .create_fence(&create_info, None)
-                .unwrap_or_else(|err| panic!("Failed to create `{name}` fence: {err}"))
+                .unwrap_or_else(|err| panic!("Failed to create `{}` fence: {err}", name.as_ref()))
         }
     }
 
