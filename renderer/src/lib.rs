@@ -5,9 +5,8 @@ mod buffer;
 mod commands;
 mod context;
 mod descriptors;
-mod framebuffers;
 mod image;
-mod pass;
+mod passes;
 mod pipeline;
 mod query_pool;
 mod sampler;
@@ -27,23 +26,30 @@ use raw_window_handle::HasWindowHandle;
 
 use shared::inputs;
 
-use {context::Context, scope::OneshotScope, swapchain::Swapchain, sync_info::SyncInfo};
-
-use self::{
-    pass::{common, pathtracer, rasterizer, tonemap},
+use {
+    context::Context,
+    passes::{common, pathtracer, rasterizer, tonemap},
+    swapchain::Swapchain,
+    sync_info::SyncInfo,
     sync_state::SyncState,
 };
 
-pub struct Renderer {
-    ctx: Context,
+mod conf {
+    pub const INTERMEDIATE_FORMAT: super::image::Format = super::image::Format::Hdr;
+}
 
-    // render pass
-    common: common::Data,
+trait Destroy<C> {
+    unsafe fn destroy_with(&mut self, ctx: &C);
+}
+
+pub struct Renderer {
+    // passes
+    common: common::Data<{ conf::INTERMEDIATE_FORMAT }>,
     pathtracer_pipeline: pathtracer::Pipeline,
     rasterizer_pipeline: rasterizer::Pipeline,
+    tonemap_pipeline:
+        tonemap::Pipeline<{ conf::INTERMEDIATE_FORMAT }, { image::Format::Swapchain }>,
 
-    // tonemap pass
-    tonemap_pipeline: tonemap::Pipeline,
     swapchain: Swapchain,
 
     // state
@@ -51,10 +57,8 @@ pub struct Renderer {
     use_pathtracer: bool,
     frame: u32,
     state: SyncState,
-}
 
-trait Destroy<C> {
-    unsafe fn destroy_with(&mut self, ctx: &mut C);
+    ctx: Context,
 }
 
 pub enum Error {
@@ -69,38 +73,34 @@ impl Renderer {
         resolution: (u32, u32),
         camera: inputs::Camera,
     ) -> Self {
-        let mut ctx = Context::init(name.as_ref(), window);
+        let ctx = Context::init(name.as_ref(), window);
 
-        let mut common = common::Data::create(&mut ctx, scene, resolution);
+        let mut common = common::Data::create(&ctx, scene, resolution);
         let uniforms = inputs::Uniforms { camera };
         common.uniforms.update(&uniforms);
 
-        let pathtracer_pipeline = pathtracer::Pipeline::create(&mut ctx, &common);
-
-        let init_scope = OneshotScope::begin_on(&ctx, "Initialization", ctx.queues.transfer());
-
-        let rasterizer_pipeline = rasterizer::Pipeline::create(&mut ctx, &init_scope, &common);
+        let pathtracer_pipeline = pathtracer::Pipeline::create(&ctx, &common);
+        let rasterizer_pipeline = rasterizer::Pipeline::create(&ctx, &common);
         let tonemap_pipeline = tonemap::Pipeline::create(&ctx, &common);
-        let swapchain = Swapchain::create(&mut ctx, &init_scope, tonemap_pipeline.render_pass);
 
-        init_scope.finish(&mut ctx);
+        let swapchain = Swapchain::create(&ctx);
 
         let state = SyncState::create(&ctx);
 
         Self {
-            ctx,
-
             common,
             pathtracer_pipeline,
             rasterizer_pipeline,
-
             tonemap_pipeline,
+
             swapchain,
 
             uniforms,
             frame: 0,
             use_pathtracer: true,
             state,
+
+            ctx,
         }
     }
 
@@ -148,7 +148,7 @@ impl Renderer {
                     signal_to: vec![self.state.frame_ready_semaphore()],
                     fence: Some(self.state.in_flight_fence()),
                 },
-                &self.swapchain.target,
+                &self.swapchain.images[image_index],
             );
 
             self.swapchain.present_to_when(
@@ -183,15 +183,8 @@ impl Renderer {
         let is_valid = self.ctx.refresh_surface_capabilities();
 
         if is_valid {
-            unsafe { self.swapchain.destroy_with(&mut self.ctx) };
-            let init_scope =
-                OneshotScope::begin_on(&self.ctx, "Initialization", self.ctx.queues.transfer());
-            self.swapchain = Swapchain::create(
-                &mut self.ctx,
-                &init_scope,
-                self.tonemap_pipeline.render_pass,
-            );
-            init_scope.finish(&mut self.ctx);
+            unsafe { self.swapchain.destroy_with(&self.ctx) };
+            self.swapchain = Swapchain::create(&self.ctx);
         }
 
         is_valid
@@ -203,28 +196,26 @@ impl Drop for Renderer {
         unsafe {
             self.ctx.wait_idle();
 
-            self.state.destroy_with(&mut self.ctx);
+            self.state.destroy_with(&self.ctx);
 
-            self.swapchain.destroy_with(&mut self.ctx);
-            self.tonemap_pipeline.destroy_with(&mut self.ctx);
+            self.swapchain.destroy_with(&self.ctx);
+            self.tonemap_pipeline.destroy_with(&self.ctx);
 
-            self.rasterizer_pipeline.destroy_with(&mut self.ctx);
-            self.pathtracer_pipeline.destroy_with(&mut self.ctx);
-            self.common.destroy_with(&mut self.ctx);
-
-            self.ctx.destroy_with(&mut ());
+            self.rasterizer_pipeline.destroy_with(&self.ctx);
+            self.pathtracer_pipeline.destroy_with(&self.ctx);
+            self.common.destroy_with(&self.ctx);
         }
     }
 }
 
 impl<T: Destroy<C>, C> Destroy<C> for Vec<T> {
-    unsafe fn destroy_with(&mut self, ctx: &mut C) {
+    unsafe fn destroy_with(&mut self, ctx: &C) {
         self.iter_mut().for_each(|e| e.destroy_with(ctx));
     }
 }
 
 impl<T: Destroy<C> + ?Sized, C> Destroy<C> for Box<T> {
-    unsafe fn destroy_with(&mut self, ctx: &mut C) {
+    unsafe fn destroy_with(&mut self, ctx: &C) {
         self.deref_mut().destroy_with(ctx);
     }
 }

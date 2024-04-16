@@ -3,8 +3,8 @@ use std::{ops::Deref, slice};
 use ash::vk;
 
 use crate::{
-    buffer::Buffer, context::Context, query_pool::QueryPool, scope::FlushableScope, world::Scene,
-    Destroy,
+    buffer::Buffer, commands::Commands, context::Context, query_pool::QueryPool, scope::Scope,
+    world, Destroy,
 };
 
 pub struct AccelerationStructures {
@@ -42,24 +42,29 @@ unsafe impl bytemuck::Zeroable for Instance {}
 unsafe impl bytemuck::Pod for Instance {}
 
 impl AccelerationStructures {
-    pub fn build(ctx: &mut Context, scene: &Scene) -> Self {
-        let mut scope =
-            FlushableScope::begin_on(ctx, "Build Acceleration Structures", ctx.queues.compute());
-        let blases = Self::build_blases(ctx, &mut scope, scene);
-        let tlas = Self::build_tlas(ctx, &mut scope, scene, &blases);
+    pub fn build(ctx: &Context, scene_info: &world::SceneInfo) -> Self {
+        let mut scope = Scope::new(Commands::begin_on_queue(
+            ctx,
+            "Acceleration Structures - Initialization",
+            ctx.queues.compute(),
+        ));
+
+        let blases = Self::build_blases(ctx, &mut scope, scene_info);
+        let tlas = Self::build_tlas(ctx, &mut scope, &scene_info.host.instances, &blases);
+
         scope.finish(ctx);
 
         Self { blases, tlas }
     }
 
     fn build_tlas(
-        ctx: &mut Context,
-        scope: &mut FlushableScope,
-        scene: &Scene,
+        ctx: &Context,
+        scope: &mut Scope,
+        instances: &[scene::Instance],
         blases: &[AccelerationStructure],
     ) -> AccelerationStructure {
         let instances_info =
-            InstancesInfo::for_instances(ctx, scope, &scene.host_info.instances, blases);
+            InstancesInfo::for_instances(ctx, scope.commands.buffer, instances, blases);
         let geometry_info = GeometryInfo::for_instances(ctx, &instances_info);
         let mut build_info = BuildInfo::for_geometry(ctx, false, &geometry_info);
         scope.add_resource(instances_info);
@@ -68,11 +73,11 @@ impl AccelerationStructures {
     }
 
     pub fn build_blases(
-        ctx: &mut Context,
-        scope: &mut FlushableScope,
-        scene: &Scene,
+        ctx: &Context,
+        scope: &mut Scope,
+        scene_info: &world::SceneInfo,
     ) -> Vec<AccelerationStructure> {
-        let geometry_infos = GeometryInfo::for_primitives(scene);
+        let geometry_infos = GeometryInfo::for_primitives(scene_info);
         let mut build_infos = BuildInfo::for_geometries(ctx, true, &geometry_infos);
 
         let max_scratch_size = build_infos
@@ -91,7 +96,7 @@ impl AccelerationStructures {
             query_type,
             build_infos.len() as _,
         );
-        query_pool.reset(ctx, scope);
+        query_pool.reset(ctx, scope.commands.buffer);
 
         let mut uncompacted = Vec::with_capacity(build_infos.len());
 
@@ -163,7 +168,7 @@ impl AccelerationStructures {
 }
 
 impl AccelerationStructure {
-    fn init(ctx: &mut Context, name: impl AsRef<str>, build_info: &BuildInfo) -> Self {
+    fn init(ctx: &Context, name: impl AsRef<str>, build_info: &BuildInfo) -> Self {
         let object_name = String::from(name.as_ref()) + " - Acceleration Structure";
 
         let buffer = Buffer::create(
@@ -208,8 +213,8 @@ impl AccelerationStructure {
     }
 
     fn build(
-        ctx: &mut Context,
-        scope: &mut FlushableScope,
+        ctx: &Context,
+        scope: &mut Scope,
         name: &str,
         build_info: &mut BuildInfo,
         scratch_address: Option<vk::DeviceAddress>,
@@ -233,8 +238,8 @@ impl AccelerationStructure {
     }
 
     fn create_scratch(
-        ctx: &mut Context,
-        scope: &mut FlushableScope,
+        ctx: &Context,
+        scope: &mut Scope,
         name: impl AsRef<str>,
         size: vk::DeviceSize,
     ) -> vk::DeviceAddress {
@@ -348,7 +353,7 @@ impl<'a> GeometryInfo<'a> {
     }
 
     fn for_primitive(
-        scene: &'a Scene,
+        scene_info: &'a world::SceneInfo,
         primitive_info: &scene::PrimitiveInfo,
         primitive_size: &scene::PrimitiveSize,
     ) -> Self {
@@ -357,12 +362,12 @@ impl<'a> GeometryInfo<'a> {
             .vertex_stride(std::mem::size_of::<scene::Vertex>() as _)
             .max_vertex(primitive_size.vertices_size - 1)
             .vertex_data(vk::DeviceOrHostAddressConstKHR {
-                device_address: scene.device_info.vertices_address
+                device_address: scene_info.device.vertices_address
                     + bytemuck::offset_of!(scene::Vertex, position) as vk::DeviceAddress,
             })
             .index_type(vk::IndexType::UINT32)
             .index_data(vk::DeviceOrHostAddressConstKHR {
-                device_address: scene.device_info.indices_address,
+                device_address: scene_info.device.indices_address,
             });
 
         let geometry = vk::AccelerationStructureGeometryKHR::default()
@@ -378,14 +383,14 @@ impl<'a> GeometryInfo<'a> {
         Self::new(geometry, range)
     }
 
-    fn for_primitives(scene: &'a Scene) -> Vec<Self> {
-        scene
-            .host_info
+    fn for_primitives(scene_info: &'a world::SceneInfo) -> Vec<Self> {
+        scene_info
+            .host
             .primitive_infos
             .iter()
-            .zip(scene.host_info.primitive_sizes.iter())
+            .zip(scene_info.host.primitive_sizes.iter())
             .map(|(primitive_info, primitive_size)| {
-                Self::for_primitive(scene, primitive_info, primitive_size)
+                Self::for_primitive(scene_info, primitive_info, primitive_size)
             })
             .collect()
     }
@@ -393,8 +398,8 @@ impl<'a> GeometryInfo<'a> {
 
 impl InstancesInfo {
     fn for_instances(
-        ctx: &mut Context,
-        scope: &FlushableScope,
+        ctx: &Context,
+        command_buffer: vk::CommandBuffer,
         instances: &[scene::Instance],
         blases: &[AccelerationStructure],
     ) -> Self {
@@ -413,7 +418,7 @@ impl InstancesInfo {
 
         unsafe {
             ctx.cmd_pipeline_barrier(
-                scope.commands.buffer,
+                command_buffer,
                 vk::PipelineStageFlags::TRANSFER,
                 vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
                 vk::DependencyFlags::empty(),
@@ -465,14 +470,14 @@ impl Instance {
 }
 
 impl Destroy<Context> for AccelerationStructures {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         self.tlas.destroy_with(ctx);
         self.blases.destroy_with(ctx);
     }
 }
 
 impl Destroy<Context> for AccelerationStructure {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         ctx.ext
             .accel
             .destroy_acceleration_structure(self.accel, None);
@@ -481,7 +486,7 @@ impl Destroy<Context> for AccelerationStructure {
 }
 
 impl Destroy<Context> for InstancesInfo {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         self.buffer.destroy_with(ctx);
     }
 }

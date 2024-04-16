@@ -9,7 +9,7 @@ pub struct Uniforms {
 }
 
 impl Uniforms {
-    pub fn create(ctx: &mut Context) -> Self {
+    pub fn create(ctx: &Context) -> Self {
         let buffer_info = vk::BufferCreateInfo::default()
             .usage(vk::BufferUsageFlags::UNIFORM_BUFFER)
             .size(std::mem::size_of::<inputs::Uniforms>() as u64)
@@ -31,7 +31,7 @@ impl Uniforms {
 }
 
 impl Destroy<Context> for Uniforms {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         self.buffer.destroy_with(ctx);
     }
 }

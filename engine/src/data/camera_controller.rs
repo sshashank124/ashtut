@@ -3,8 +3,8 @@ use shared::inputs;
 mod conf {
     pub const Z_NEAR: f32 = 1e-1;
     pub const Z_FAR: f32 = 1e+4;
-    pub const MOVE_SPEED: f32 = 1e-6;
-    pub const PAN_SPEED: f32 = 5e-7;
+    pub const MOVE_SPEED: f32 = 5e-7;
+    pub const PAN_SPEED: f32 = 2e-7;
 }
 
 pub struct CameraController {

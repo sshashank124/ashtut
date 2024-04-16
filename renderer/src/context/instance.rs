@@ -8,7 +8,7 @@ use ash::vk;
 use raw_window_handle::HasWindowHandle;
 
 use super::{
-    bytes_to_string, extensions, physical_device::PhysicalDevice, queue, surface, Destroy,
+    bytes_to_string, extensions, physical_device::PhysicalDevice, queue, surface,
 };
 
 mod conf {
@@ -107,9 +107,11 @@ impl Instance {
     }
 }
 
-impl Destroy<()> for Instance {
-    unsafe fn destroy_with(&mut self, (): &mut ()) {
-        self.instance.destroy_instance(None);
+impl Drop for Instance {
+    fn drop(&mut self) {
+        unsafe {
+            self.instance.destroy_instance(None);
+        }
     }
 }
 

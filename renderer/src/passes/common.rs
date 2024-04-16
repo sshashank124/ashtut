@@ -3,7 +3,7 @@ use std::slice;
 use ash::vk;
 
 use crate::{
-    context::Context, descriptors::Descriptors, image, scope::OneshotScope, uniforms::Uniforms,
+    commands::Commands, context::Context, descriptors::Descriptors, image, uniforms::Uniforms,
     world::Scene, Destroy,
 };
 
@@ -12,56 +12,51 @@ mod conf {
     pub const MAX_NUM_TEXTURES: u32 = 128;
 }
 
-pub struct Data {
+pub struct Data<const FORMAT: image::Format> {
     pub descriptors: Descriptors,
-    pub target: image::Image<{ image::Format::Hdr }>,
-    pub resolution: vk::Extent2D,
     pub uniforms: Uniforms,
     pub scene: Scene,
+    pub target: image::Image<FORMAT>,
 }
 
-impl Data {
-    pub fn create(ctx: &mut Context, scene: scene::Scene, resolution: (u32, u32)) -> Self {
+impl<const FORMAT: image::Format> Data<FORMAT> {
+    pub fn create(ctx: &Context, scene: scene::Scene, resolution: (u32, u32)) -> Self {
         let descriptors = Self::create_descriptors(ctx);
+        let uniforms = Uniforms::create(ctx);
+        let scene = Scene::create(ctx, scene);
 
-        let resolution = vk::Extent2D {
-            width: resolution.0,
-            height: resolution.1,
-        };
-
-        let mut init_scope = OneshotScope::begin_on(
+        let commands = Commands::begin_on_queue(
             ctx,
-            format!("{} Initialization", conf::NAME),
+            format!("{} - Initialization", conf::NAME),
             ctx.queues.graphics(),
         );
 
         let target = {
             let info = vk::ImageCreateInfo {
-                extent: resolution.into(),
+                extent: vk::Extent3D {
+                    width: resolution.0,
+                    height: resolution.1,
+                    depth: 1,
+                },
                 usage: vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::STORAGE,
                 ..Default::default()
             };
             image::Image::create(
                 ctx,
-                &init_scope,
+                commands.buffer,
                 format!("{} Target", conf::NAME),
                 &info,
                 Some(&image::BarrierInfo::GENERAL),
             )
         };
 
-        let scene = Scene::create(ctx, &mut init_scope, scene);
-
-        let uniforms = Uniforms::create(ctx);
-
-        init_scope.finish(ctx);
+        commands.finish(ctx, &vk::SubmitInfo::default(), None);
 
         let data = Self {
             descriptors,
-            target,
-            resolution,
             uniforms,
             scene,
+            target,
         };
         data.bind_to_descriptor_sets(ctx);
         data
@@ -86,6 +81,16 @@ impl Data {
                     ),
                 vk::DescriptorSetLayoutBinding::default()
                     .binding(2)
+                    .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+                    .descriptor_count(1)
+                    .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR),
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(3)
+                    .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                    .descriptor_count(1)
+                    .stage_flags(vk::ShaderStageFlags::RAYGEN_KHR),
+                vk::DescriptorSetLayoutBinding::default()
+                    .binding(4)
                     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                     .descriptor_count(conf::MAX_NUM_TEXTURES)
                     .stage_flags(vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::RAYGEN_KHR),
@@ -93,7 +98,10 @@ impl Data {
             let binding_flags = [
                 vk::DescriptorBindingFlags::empty(),
                 vk::DescriptorBindingFlags::empty(),
-                vk::DescriptorBindingFlags::PARTIALLY_BOUND,
+                vk::DescriptorBindingFlags::empty(),
+                vk::DescriptorBindingFlags::empty(),
+                vk::DescriptorBindingFlags::PARTIALLY_BOUND
+                    | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT,
             ];
             let mut binding_flags_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::default()
                 .binding_flags(&binding_flags);
@@ -115,12 +123,20 @@ impl Data {
                     .ty(vk::DescriptorType::UNIFORM_BUFFER)
                     .descriptor_count(1),
                 vk::DescriptorPoolSize::default()
+                    .ty(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+                    .descriptor_count(1),
+                vk::DescriptorPoolSize::default()
+                    .ty(vk::DescriptorType::STORAGE_IMAGE)
+                    .descriptor_count(1),
+                vk::DescriptorPoolSize::default()
                     .ty(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                     .descriptor_count(conf::MAX_NUM_TEXTURES),
             ];
+
             let info = vk::DescriptorPoolCreateInfo::default()
                 .pool_sizes(&sizes)
                 .max_sets(1);
+
             unsafe {
                 ctx.create_descriptor_pool(&info, None)
                     .expect("Failed to create descriptor pool")
@@ -128,9 +144,14 @@ impl Data {
         };
 
         let sets = {
+            let mut set_counts = vk::DescriptorSetVariableDescriptorCountAllocateInfo::default()
+                .descriptor_counts(&[conf::MAX_NUM_TEXTURES]);
+
             let info = vk::DescriptorSetAllocateInfo::default()
                 .descriptor_pool(pool)
-                .set_layouts(slice::from_ref(&layout));
+                .set_layouts(slice::from_ref(&layout))
+                .push_next(&mut set_counts);
+
             unsafe {
                 ctx.allocate_descriptor_sets(&info)
                     .expect("Failed to allocate descriptor sets")
@@ -148,6 +169,13 @@ impl Data {
         let scene_desc_info = vk::DescriptorBufferInfo::default()
             .buffer(*self.scene.scene_desc)
             .range(vk::WHOLE_SIZE);
+
+        let mut accel_info = vk::WriteDescriptorSetAccelerationStructureKHR::default()
+            .acceleration_structures(slice::from_ref(&self.scene.accel.tlas));
+
+        let target_info = vk::DescriptorImageInfo::default()
+            .image_layout(vk::ImageLayout::GENERAL)
+            .image_view(self.target.view);
 
         let textures_info: Vec<_> = self
             .scene
@@ -176,6 +204,17 @@ impl Data {
                 vk::WriteDescriptorSet::default()
                     .dst_set(set)
                     .dst_binding(2)
+                    .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+                    .descriptor_count(1)
+                    .push_next(&mut accel_info),
+                vk::WriteDescriptorSet::default()
+                    .dst_set(set)
+                    .dst_binding(3)
+                    .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                    .image_info(slice::from_ref(&target_info)),
+                vk::WriteDescriptorSet::default()
+                    .dst_set(set)
+                    .dst_binding(4)
                     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
                     .image_info(&textures_info),
             ];
@@ -184,14 +223,16 @@ impl Data {
                 ctx.update_descriptor_sets(&writes, &[]);
             }
         }
+
+        println!("Potato");
     }
 }
 
-impl Destroy<Context> for Data {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+impl<const FORMAT: image::Format> Destroy<Context> for Data<FORMAT> {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
+        self.target.destroy_with(ctx);
         self.scene.destroy_with(ctx);
         self.uniforms.destroy_with(ctx);
-        self.target.destroy_with(ctx);
         self.descriptors.destroy_with(ctx);
     }
 }

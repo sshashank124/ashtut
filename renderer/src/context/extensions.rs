@@ -18,6 +18,9 @@ pub const REQUIRED_FOR_DEVICE: &[*const std::ffi::c_char] = &[
     khr::deferred_host_operations::NAME.as_ptr(),
     // Ray Tracing
     khr::ray_tracing_pipeline::NAME.as_ptr(),
+    // Additional
+    ext::memory_priority::NAME.as_ptr(),
+    ext::pageable_device_local_memory::NAME.as_ptr(),
 ];
 
 pub struct Handles {

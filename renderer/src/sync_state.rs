@@ -49,7 +49,7 @@ impl SyncState {
 }
 
 impl Destroy<Context> for SyncState {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         for i in 0..conf::MAX_FRAMES_IN_FLIGHT {
             ctx.destroy_semaphore(self.frame_available[i], None);
             ctx.destroy_semaphore(self.frame_ready[i], None);

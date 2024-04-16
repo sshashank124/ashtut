@@ -3,8 +3,6 @@ use std::ops::{Deref, DerefMut};
 use ash::{khr, vk};
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 
-use crate::Destroy;
-
 use super::{instance::Instance, physical_device::PhysicalDevice};
 
 pub mod conf {
@@ -177,12 +175,6 @@ impl Config {
     }
 }
 
-impl Destroy<()> for Surface {
-    unsafe fn destroy_with(&mut self, ctx: &mut ()) {
-        self.handle.destroy_with(ctx);
-    }
-}
-
 impl Deref for Surface {
     type Target = Handle;
     fn deref(&self) -> &Self::Target {
@@ -196,9 +188,11 @@ impl DerefMut for Surface {
     }
 }
 
-impl Destroy<()> for Handle {
-    unsafe fn destroy_with(&mut self, (): &mut ()) {
-        self.loader.destroy_surface(self.surface, None);
+impl Drop for Handle {
+    fn drop(&mut self) {
+        unsafe {
+            self.loader.destroy_surface(self.surface, None);
+        }
     }
 }
 

@@ -47,9 +47,7 @@ impl<const NUM_SETS: usize> Pipeline<{ NUM_SETS }> {
     }
 
     pub fn begin_pipeline(&self, ctx: &Context, idx: usize) -> &Commands {
-        self.commands[idx].reset(ctx);
-        self.commands[idx].begin_recording(ctx);
-        &self.commands[idx]
+        self.commands[idx].restart(ctx)
     }
 
     pub fn submit_pipeline(&self, ctx: &Context, idx: usize, sync_info: &SyncInfo) {
@@ -68,7 +66,7 @@ impl<const NUM_SETS: usize> Pipeline<{ NUM_SETS }> {
 }
 
 impl<const NUM_SETS: usize> Destroy<Context> for Pipeline<{ NUM_SETS }> {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         self.commands.destroy_with(ctx);
         ctx.destroy_pipeline(self.pipeline, None);
         ctx.destroy_pipeline_layout(self.layout, None);

@@ -11,15 +11,13 @@ use std::ops::{Deref, DerefMut};
 
 use raw_window_handle::HasWindowHandle;
 
-use crate::Destroy;
-
 use self::{device::Device, instance::Instance, physical_device::PhysicalDevice, surface::Surface};
 
 pub struct Context {
-    pub instance: Instance,
-    pub physical_device: PhysicalDevice,
-    pub surface: Surface,
     pub device: Device,
+    pub surface: Surface,
+    pub physical_device: PhysicalDevice,
+    pub instance: Instance,
 }
 
 impl Context {
@@ -35,23 +33,15 @@ impl Context {
         let device = Device::create(&instance, &physical_device, &queue_families);
 
         Self {
-            instance,
-            physical_device,
-            surface,
             device,
+            surface,
+            physical_device,
+            instance,
         }
     }
 
     pub fn refresh_surface_capabilities(&mut self) -> bool {
         self.surface.refresh_capabilities(&self.physical_device)
-    }
-}
-
-impl Destroy<()> for Context {
-    unsafe fn destroy_with(&mut self, ctx: &mut ()) {
-        self.device.destroy_with(ctx);
-        self.surface.destroy_with(ctx);
-        self.instance.destroy_with(ctx);
     }
 }
 

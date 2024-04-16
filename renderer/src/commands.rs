@@ -7,27 +7,23 @@ use crate::{
     Destroy,
 };
 
-pub type Commands = CommandsT<true>;
-
-#[allow(clippy::module_name_repetitions)]
-pub struct CommandsT<const MULTI_USE: bool> {
+pub struct Commands {
     queue: vk::Queue,
     pool: vk::CommandPool,
     pub buffer: vk::CommandBuffer,
 }
 
-impl<const MULTI_USE: bool> CommandsT<{ MULTI_USE }> {
+impl Commands {
+    pub fn begin_on_queue(ctx: &Context, name: impl AsRef<str>, queue: &Queue) -> Self {
+        let c = Self::create_on_queue(ctx, name, queue);
+        c.begin_recording(ctx);
+        c
+    }
+
     pub fn create_on_queue(ctx: &Context, name: impl AsRef<str>, queue: &Queue) -> Self {
         let name = String::from(name.as_ref());
         let pool = {
-            let transient_flag = if MULTI_USE {
-                vk::CommandPoolCreateFlags::empty()
-            } else {
-                vk::CommandPoolCreateFlags::TRANSIENT
-            };
-            let info = vk::CommandPoolCreateInfo::default()
-                .queue_family_index(queue.family_index)
-                .flags(transient_flag);
+            let info = vk::CommandPoolCreateInfo::default().queue_family_index(queue.family_index);
             unsafe {
                 ctx.create_command_pool(&info, None)
                     .expect("Failed to create command pool")
@@ -52,7 +48,7 @@ impl<const MULTI_USE: bool> CommandsT<{ MULTI_USE }> {
         }
     }
 
-    pub fn begin_recording(&self, ctx: &Context) {
+    fn begin_recording(&self, ctx: &Context) {
         let begin_info = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
@@ -92,9 +88,12 @@ impl<const MULTI_USE: bool> CommandsT<{ MULTI_USE }> {
             }
         }
     }
-}
 
-impl CommandsT<true> {
+    pub fn finish(mut self, ctx: &Context, submit_info: &vk::SubmitInfo, fence: Option<vk::Fence>) {
+        self.submit(ctx, submit_info, fence);
+        unsafe { self.destroy_with(ctx) };
+    }
+
     pub fn reset(&self, ctx: &Context) {
         unsafe {
             ctx.reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty())
@@ -102,15 +101,20 @@ impl CommandsT<true> {
         }
     }
 
-    pub fn flush(&self, ctx: &Context) {
-        self.submit(ctx, &vk::SubmitInfo::default(), None);
+    pub fn restart(&self, ctx: &Context) -> &Self {
         self.reset(ctx);
         self.begin_recording(ctx);
+        self
+    }
+
+    pub fn flush(&self, ctx: &Context) -> &Self {
+        self.submit(ctx, &vk::SubmitInfo::default(), None);
+        self.restart(ctx)
     }
 }
 
-impl<const MULTI_USE: bool> Destroy<Context> for CommandsT<{ MULTI_USE }> {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+impl Destroy<Context> for Commands {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         ctx.destroy_command_pool(self.pool, None);
     }
 }

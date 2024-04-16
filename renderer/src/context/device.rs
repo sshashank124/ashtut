@@ -2,12 +2,11 @@ use std::{
     fs::File,
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
+    sync,
 };
 
 use ash::vk;
 use gpu_allocator::vulkan as gpu_alloc;
-
-use crate::Destroy;
 
 use super::{
     extensions,
@@ -21,7 +20,7 @@ pub struct Device {
     device: ash::Device,
     pub ext: extensions::Handles,
     pub queues: Queues,
-    pub allocator: ManuallyDrop<gpu_alloc::Allocator>,
+    allocator: ManuallyDrop<sync::RwLock<gpu_alloc::Allocator>>,
 }
 
 impl Device {
@@ -33,7 +32,9 @@ impl Device {
         let (required_features, mut additional_required_features) = Features::required();
         let mut required_features = additional_required_features
             .iter_mut()
-            .fold(required_features, |acc_features, f| acc_features.push_next(f.as_mut()));
+            .fold(required_features, |acc_features, f| {
+                acc_features.push_next(f.as_mut())
+            });
 
         let queue_create_infos = Queues::create_infos(families);
 
@@ -75,7 +76,7 @@ impl Device {
             device,
             ext,
             queues,
-            allocator: ManuallyDrop::new(allocator),
+            allocator: ManuallyDrop::new(sync::RwLock::new(allocator)),
         }
     }
 
@@ -84,7 +85,9 @@ impl Device {
         unsafe {
             self.device
                 .create_semaphore(&create_info, None)
-                .unwrap_or_else(|err| panic!("Failed to create `{}` semaphore: {err}", name.as_ref()))
+                .unwrap_or_else(|err| {
+                    panic!("Failed to create `{}` semaphore: {err}", name.as_ref())
+                })
         }
     }
 
@@ -131,12 +134,20 @@ impl Device {
                 .expect("Failed to set object debug name");
         }
     }
+
+    pub fn allocator(&self) -> sync::RwLockWriteGuard<'_, gpu_alloc::Allocator> {
+        self.allocator
+            .write()
+            .expect("Failed to get write access to Vulkan allocator")
+    }
 }
 
-impl Destroy<()> for Device {
-    unsafe fn destroy_with(&mut self, (): &mut ()) {
-        ManuallyDrop::drop(&mut self.allocator);
-        self.device.destroy_device(None);
+impl Drop for Device {
+    fn drop(&mut self) {
+        unsafe {
+            ManuallyDrop::drop(&mut self.allocator);
+            self.device.destroy_device(None);
+        }
     }
 }
 

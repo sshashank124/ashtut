@@ -7,30 +7,38 @@ use super::{instance::Instance, physical_device::PhysicalDevice, surface::Handle
 pub struct Queues {
     graphics: Queue,
     compute: Queue,
+    transfer: Queue,
 }
 
 pub struct Queue {
-    pub queue: vk::Queue,
+    queue: vk::Queue,
     pub family_index: u32,
 }
 
 pub struct Families {
-    pub graphics: u32,
-    pub compute: u32,
+    graphics: u32,
+    compute: u32,
+    transfer: u32,
 }
 
 #[derive(Debug, Default)]
 struct FamiliesInfo {
     graphics: Option<u32>,
     compute: Option<u32>,
+    transfer: Option<u32>,
 }
 
 impl Queues {
     pub fn create(device: &ash::Device, families: &Families) -> Self {
-        let graphics = Queue::create(device, families.graphics);
-        let compute = Queue::create(device, families.compute);
+        let graphics = Queue::create(device, families.graphics, 0);
+        let compute = Queue::create(device, families.compute, 0);
+        let transfer = Queue::create(device, families.transfer, 0);
 
-        Self { graphics, compute }
+        Self {
+            graphics,
+            compute,
+            transfer,
+        }
     }
 
     pub const fn graphics(&self) -> &Queue {
@@ -38,11 +46,11 @@ impl Queues {
     }
 
     pub const fn compute(&self) -> &Queue {
-        &self.compute
+        &self.graphics
     }
 
     pub const fn transfer(&self) -> &Queue {
-        &self.graphics
+        &self.transfer
     }
 
     pub fn create_infos(indices: &Families) -> Vec<vk::DeviceQueueCreateInfo> {
@@ -59,8 +67,8 @@ impl Queues {
 }
 
 impl Queue {
-    pub fn create(device: &ash::Device, family_index: u32) -> Self {
-        let queue = unsafe { device.get_device_queue(family_index, 0) };
+    pub fn create(device: &ash::Device, family_index: u32, queue_index: u32) -> Self {
+        let queue = unsafe { device.get_device_queue(family_index, queue_index) };
 
         Self {
             queue,
@@ -71,7 +79,7 @@ impl Queue {
 
 impl Families {
     pub fn unique(&self) -> HashSet<u32> {
-        HashSet::from([self.graphics, self.compute])
+        HashSet::from([self.graphics, self.compute, self.transfer])
     }
 
     pub fn find(
@@ -90,16 +98,24 @@ impl Families {
 
         let mut found_indices = FamiliesInfo::default();
         for (index, queue_family) in valid_queue_families {
+            let idx = index as u32;
+
             let g = queue_family.queue_flags.contains(vk::QueueFlags::GRAPHICS);
             let c = queue_family.queue_flags.contains(vk::QueueFlags::COMPUTE);
             let t = queue_family.queue_flags.contains(vk::QueueFlags::TRANSFER);
+            let vd = queue_family
+                .queue_flags
+                .contains(vk::QueueFlags::VIDEO_DECODE_KHR);
+            let ve = queue_family
+                .queue_flags
+                .contains(vk::QueueFlags::VIDEO_ENCODE_KHR);
 
-            if g && t && surface.is_supported_by(physical_device, index as u32) {
-                found_indices.graphics = Some(index as u32);
-            }
-
-            if !g && c && t {
-                found_indices.compute = Some(index as u32);
+            if !g && !c && t && !vd && !ve {
+                found_indices.transfer = Some(idx);
+            } else if !g && c {
+                found_indices.compute = Some(idx);
+            } else if g && c && surface.is_supported_by(physical_device, idx) {
+                found_indices.graphics = Some(idx);
             }
 
             if found_indices.is_complete() {
@@ -124,12 +140,13 @@ impl TryFrom<FamiliesInfo> for Families {
         Ok(Self {
             graphics: value.graphics.ok_or(())?,
             compute: value.compute.ok_or(())?,
+            transfer: value.transfer.ok_or(())?,
         })
     }
 }
 
 impl FamiliesInfo {
     pub const fn is_complete(&self) -> bool {
-        self.graphics.is_some() && self.compute.is_some()
+        self.graphics.is_some() && self.compute.is_some() && self.transfer.is_some()
     }
 }

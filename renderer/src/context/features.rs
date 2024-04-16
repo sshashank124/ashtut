@@ -4,13 +4,15 @@ use super::instance::Instance;
 
 pub struct Features {
     // Core
-    pub v_1_0: V10Features,
-    pub v_1_1: V11Features,
-    pub v_1_2: V12Features,
-    pub v_1_3: V13Features,
+    v_1_0: V10Features,
+    v_1_1: V11Features,
+    v_1_2: V12Features,
+    v_1_3: V13Features,
     // Ray Tracing
-    pub acceleration_structure: AccelerationStructureFeatures,
-    pub ray_tracing_pipeline: RayTracingPipelineFeatures,
+    acceleration_structure: AccelerationStructureFeatures,
+    ray_tracing_pipeline: RayTracingPipelineFeatures,
+    // Additional
+    pageable_device_local_memory: PageableDeviceLocalMemoryFeatures,
 }
 
 pub struct V10Features {
@@ -40,9 +42,15 @@ pub struct AccelerationStructureFeatures {
 pub struct RayTracingPipelineFeatures {
     ray_tracing_pipeline: bool,
 }
+pub struct PageableDeviceLocalMemoryFeatures {
+    pageable_device_local_memory: bool,
+}
 
 impl Features {
     pub fn get_supported(instance: &Instance, physical_device: vk::PhysicalDevice) -> Self {
+        let mut pageable_device_local_memory =
+            vk::PhysicalDevicePageableDeviceLocalMemoryFeaturesEXT::default();
+
         let mut ray_tracing_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut acceleration_structure =
             vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
@@ -52,6 +60,7 @@ impl Features {
         let mut v_1_1 = vk::PhysicalDeviceVulkan11Features::default();
 
         let mut v_1_0 = vk::PhysicalDeviceFeatures2::default()
+            .push_next(&mut pageable_device_local_memory)
             .push_next(&mut ray_tracing_pipeline)
             .push_next(&mut acceleration_structure)
             .push_next(&mut v_1_3)
@@ -67,12 +76,15 @@ impl Features {
             v_1_3: V13Features::from(v_1_3),
             acceleration_structure: AccelerationStructureFeatures::from(acceleration_structure),
             ray_tracing_pipeline: RayTracingPipelineFeatures::from(ray_tracing_pipeline),
+            pageable_device_local_memory: PageableDeviceLocalMemoryFeatures::from(
+                pageable_device_local_memory,
+            ),
         }
     }
 
     pub fn required<'a>() -> (
         vk::PhysicalDeviceFeatures2<'a>,
-        [Box<dyn vk::ExtendsPhysicalDeviceFeatures2>; 5],
+        [Box<dyn vk::ExtendsPhysicalDeviceFeatures2>; 6],
     ) {
         (
             vk::PhysicalDeviceFeatures2::default().features(V10Features::required()),
@@ -82,6 +94,7 @@ impl Features {
                 Box::new(V13Features::required()),
                 Box::new(AccelerationStructureFeatures::required()),
                 Box::new(RayTracingPipelineFeatures::required()),
+                Box::new(PageableDeviceLocalMemoryFeatures::required()),
             ],
         )
     }
@@ -93,6 +106,7 @@ impl Features {
             && self.v_1_3.supports_requirements()
             && self.acceleration_structure.supports_requirements()
             && self.ray_tracing_pipeline.supports_requirements()
+            && self.pageable_device_local_memory.supports_requirements()
     }
 }
 
@@ -136,6 +150,7 @@ impl V12Features {
             .buffer_device_address(true)
             .descriptor_binding_partially_bound(true)
             .descriptor_binding_variable_descriptor_count(true)
+            .descriptor_indexing(true)
             .runtime_descriptor_array(true)
             .scalar_block_layout(true)
             .uniform_and_storage_buffer8_bit_access(true)
@@ -172,6 +187,17 @@ impl RayTracingPipelineFeatures {
 
     pub fn required<'a>() -> vk::PhysicalDeviceRayTracingPipelineFeaturesKHR<'a> {
         vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default().ray_tracing_pipeline(true)
+    }
+}
+
+impl PageableDeviceLocalMemoryFeatures {
+    pub const fn supports_requirements(&self) -> bool {
+        self.pageable_device_local_memory
+    }
+
+    pub fn required<'a>() -> vk::PhysicalDevicePageableDeviceLocalMemoryFeaturesEXT<'a> {
+        vk::PhysicalDevicePageableDeviceLocalMemoryFeaturesEXT::default()
+            .pageable_device_local_memory(true)
     }
 }
 
@@ -232,6 +258,16 @@ impl From<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR<'_>> for RayTracingPip
     fn from(f: vk::PhysicalDeviceRayTracingPipelineFeaturesKHR) -> Self {
         Self {
             ray_tracing_pipeline: f.ray_tracing_pipeline > 0,
+        }
+    }
+}
+
+impl From<vk::PhysicalDevicePageableDeviceLocalMemoryFeaturesEXT<'_>>
+    for PageableDeviceLocalMemoryFeatures
+{
+    fn from(f: vk::PhysicalDevicePageableDeviceLocalMemoryFeaturesEXT) -> Self {
+        Self {
+            pageable_device_local_memory: f.pageable_device_local_memory > 0,
         }
     }
 }

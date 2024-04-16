@@ -1,10 +1,13 @@
 use ash::vk;
 
+use crate::commands::Commands;
+
 use super::{
+    acceleration_structure::AccelerationStructures,
     buffer::Buffer,
     context::Context,
     image::{Format, Image},
-    scope::OneshotScope,
+    scope::Scope,
     texture::Texture,
     Destroy,
 };
@@ -12,20 +15,31 @@ use super::{
 pub struct Scene {
     pub indices: Buffer,
     pub vertices: Buffer,
-    pub primitives: Buffer,
-    pub materials: Buffer,
+    primitives: Buffer,
+    materials: Buffer,
     pub scene_desc: Buffer,
-    pub images: Vec<Image<{ Format::Color }>>,
+    images: Vec<Image<{ Format::Color }>>,
     pub textures: Vec<Texture<{ Format::Color }>>,
-    pub host_info: scene::Info,
-    pub device_info: scene::SceneDesc,
+    pub info: SceneInfo,
+    pub accel: AccelerationStructures,
+}
+
+pub struct SceneInfo {
+    pub host: scene::Info,
+    pub device: scene::SceneDesc,
 }
 
 impl Scene {
-    pub fn create(ctx: &mut Context, scope: &mut OneshotScope, scene: scene::Scene) -> Self {
-        let (vertices, indices) = Self::init_vertex_index_buffer(ctx, scope, &scene.data);
-        let primitives = Self::init_primitives_buffer(ctx, scope, &scene.info);
-        let materials = Self::init_materials_buffer(ctx, scope, &scene.data);
+    pub fn create(ctx: &Context, scene: scene::Scene) -> Self {
+        let mut scope = Scope::new(Commands::begin_on_queue(
+            ctx,
+            "Scene - Initialization",
+            ctx.queues.transfer(),
+        ));
+
+        let (vertices, indices) = Self::init_vertex_index_buffer(ctx, &mut scope, &scene.data);
+        let primitives = Self::init_primitives_buffer(ctx, &mut scope, &scene.info);
+        let materials = Self::init_materials_buffer(ctx, &mut scope, &scene.data);
 
         let device_info = scene::SceneDesc {
             vertices_address: vertices.get_device_address(ctx),
@@ -33,10 +47,27 @@ impl Scene {
             materials_address: materials.get_device_address(ctx),
             primitives_address: primitives.get_device_address(ctx),
         };
-        let scene_desc = Self::init_scene_desc_buffer(ctx, scope, &device_info);
+        let scene_desc = Self::init_scene_desc_buffer(ctx, &mut scope, &device_info);
+
+        scope.finish(ctx);
+
+        let mut scope = Scope::new(Commands::begin_on_queue(
+            ctx,
+            "Scene - Initialization - Textures",
+            ctx.queues.graphics(),
+        ));
 
         let scene::Scene { info, data } = scene;
-        let (images, textures) = Self::init_textures(ctx, scope, &info, data);
+        let (images, textures) = Self::init_textures(ctx, &mut scope, &info, data);
+
+        scope.finish(ctx);
+
+        let info = SceneInfo {
+            host: info,
+            device: device_info,
+        };
+
+        let accel = AccelerationStructures::build(ctx, &info);
 
         Self {
             indices,
@@ -46,14 +77,14 @@ impl Scene {
             scene_desc,
             images,
             textures,
-            host_info: info,
-            device_info,
+            info,
+            accel,
         }
     }
 
     fn init_vertex_index_buffer(
-        ctx: &mut Context,
-        scope: &mut OneshotScope,
+        ctx: &Context,
+        scope: &mut Scope,
         scene: &scene::Data,
     ) -> (Buffer, Buffer) {
         let vertices = {
@@ -93,11 +124,7 @@ impl Scene {
         (vertices, indices)
     }
 
-    fn init_primitives_buffer(
-        ctx: &mut Context,
-        scope: &mut OneshotScope,
-        scene: &scene::Info,
-    ) -> Buffer {
+    fn init_primitives_buffer(ctx: &Context, scope: &mut Scope, scene: &scene::Info) -> Buffer {
         let create_info = vk::BufferCreateInfo::default().usage(
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
         );
@@ -111,11 +138,7 @@ impl Scene {
         )
     }
 
-    fn init_materials_buffer(
-        ctx: &mut Context,
-        scope: &mut OneshotScope,
-        scene: &scene::Data,
-    ) -> Buffer {
+    fn init_materials_buffer(ctx: &Context, scope: &mut Scope, scene: &scene::Data) -> Buffer {
         let create_info = vk::BufferCreateInfo::default().usage(
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
         );
@@ -130,8 +153,8 @@ impl Scene {
     }
 
     fn init_scene_desc_buffer(
-        ctx: &mut Context,
-        scope: &mut OneshotScope,
+        ctx: &Context,
+        scope: &mut Scope,
         scene_desc: &scene::SceneDesc,
     ) -> Buffer {
         let create_info =
@@ -147,8 +170,8 @@ impl Scene {
     }
 
     fn init_textures(
-        ctx: &mut Context,
-        scope: &mut OneshotScope,
+        ctx: &Context,
+        scope: &mut Scope,
         scene_info: &scene::Info,
         scene_data: scene::Data,
     ) -> (
@@ -202,7 +225,8 @@ impl Scene {
 }
 
 impl Destroy<Context> for Scene {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
+        self.accel.destroy_with(ctx);
         self.textures.destroy_with(ctx);
         self.images.destroy_with(ctx);
         self.scene_desc.destroy_with(ctx);

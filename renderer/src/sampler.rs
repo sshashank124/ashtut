@@ -40,7 +40,7 @@ impl Sampler {
 }
 
 impl Destroy<Context> for Sampler {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         ctx.destroy_sampler(self.sampler, None);
     }
 }

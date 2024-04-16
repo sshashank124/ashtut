@@ -3,7 +3,7 @@ use std::{ops::Deref, slice};
 use ash::vk;
 use gpu_allocator::vulkan as gpu_alloc;
 
-use super::{context::Context, scope::OneshotScope, Destroy};
+use super::{context::Context, scope::Scope, Destroy};
 
 pub struct Buffer {
     buffer: vk::Buffer,
@@ -12,7 +12,7 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn create(
-        ctx: &mut Context,
+        ctx: &Context,
         name: impl AsRef<str>,
         create_info: vk::BufferCreateInfo,
         location: gpu_allocator::MemoryLocation,
@@ -36,7 +36,7 @@ impl Buffer {
 
         let allocation = ctx
             .device
-            .allocator
+            .allocator()
             .allocate(&allocation_create_info)
             .expect("Failed to allocate memory");
 
@@ -52,20 +52,20 @@ impl Buffer {
     }
 
     pub fn create_with_data(
-        ctx: &mut Context,
+        ctx: &Context,
         name: impl AsRef<str>,
         mut info: vk::BufferCreateInfo,
         data: &[u8],
     ) -> Self {
-        info.size = std::mem::size_of_val(data) as _;
+        info = info.size(std::mem::size_of_val(data) as _);
         let mut buffer = Self::create(ctx, name, info, gpu_allocator::MemoryLocation::CpuToGpu);
         buffer.fill_from(data);
         buffer
     }
 
     pub fn create_with_staged_data(
-        ctx: &mut Context,
-        scope: &mut OneshotScope,
+        ctx: &Context,
+        scope: &mut Scope,
         name: impl AsRef<str>,
         mut info: vk::BufferCreateInfo,
         data: &[u8],
@@ -83,7 +83,7 @@ impl Buffer {
         info.usage |= vk::BufferUsageFlags::TRANSFER_DST;
         info.size = std::mem::size_of_val(data) as _;
         let mut buffer = Self::create(ctx, name, info, gpu_allocator::MemoryLocation::GpuOnly);
-        buffer.record_copy_from(ctx, scope.commands.buffer, &staging, info.size);
+        buffer.cmd_copy_from(ctx, scope.commands.buffer, &staging, info.size);
 
         scope.add_resource(staging);
 
@@ -103,7 +103,7 @@ impl Buffer {
         }
     }
 
-    pub fn record_copy_from(
+    pub fn cmd_copy_from(
         &mut self,
         ctx: &Context,
         command_buffer: vk::CommandBuffer,
@@ -128,13 +128,13 @@ impl Buffer {
 }
 
 impl Destroy<Context> for Buffer {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
+        ctx.destroy_buffer(self.buffer, None);
         if let Some(allocation) = self.allocation.take() {
-            ctx.allocator
+            ctx.allocator()
                 .free(allocation)
                 .expect("Failed to free allocated memory");
         }
-        ctx.destroy_buffer(self.buffer, None);
     }
 }
 

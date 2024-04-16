@@ -4,14 +4,7 @@ use ash::vk;
 
 use shared::{inputs, scene};
 
-use crate::{
-    context::Context,
-    framebuffers::{self, Framebuffers},
-    image, pipeline,
-    scope::OneshotScope,
-    sync_info::SyncInfo,
-    Destroy,
-};
+use crate::{commands::Commands, context::Context, image, pipeline, sync_info::SyncInfo, Destroy};
 
 use super::common;
 
@@ -22,25 +15,34 @@ pub mod conf {
 }
 
 pub struct Pipeline {
-    pub render_pass: vk::RenderPass,
-    pub target: Framebuffers<{ image::Format::Hdr }>,
+    depth: image::Image<{ image::Format::Depth }>,
     pipeline: pipeline::Pipeline<1>,
 }
 
 impl Pipeline {
-    pub fn create(ctx: &mut Context, scope: &OneshotScope, common: &common::Data) -> Self {
-        let render_pass = Self::create_render_pass(ctx);
-
-        let target = Framebuffers::create(
+    pub fn create<const FORMAT: image::Format>(
+        ctx: &Context,
+        common: &common::Data<FORMAT>,
+    ) -> Self {
+        let commands = Commands::begin_on_queue(
             ctx,
-            scope,
-            format!("{} Target", conf::NAME),
-            render_pass,
-            common.resolution,
-            std::slice::from_ref(&common.target),
+            format!("{} - Initialization", conf::NAME),
+            ctx.queues.graphics(),
         );
 
-        let (layout, pipeline) = Self::create_pipeline(ctx, render_pass, common);
+        let depth = {
+            let info = vk::ImageCreateInfo::default().extent(common.target.extent.into());
+
+            image::Image::create(
+                ctx,
+                commands.buffer,
+                format!("{} Target - Depth", conf::NAME),
+                &info,
+                Some(&image::BarrierInfo::DEPTH),
+            )
+        };
+
+        let (layout, pipeline) = Self::create_pipeline(ctx, common);
 
         let descriptor_sets = common.descriptors.sets.iter().copied().map(|a| [a]);
 
@@ -54,71 +56,14 @@ impl Pipeline {
             1,
         );
 
-        Self {
-            render_pass,
-            target,
-            pipeline,
-        }
+        commands.finish(ctx, &vk::SubmitInfo::default(), None);
+
+        Self { depth, pipeline }
     }
 
-    fn create_render_pass(ctx: &Context) -> vk::RenderPass {
-        let attachments = [
-            vk::AttachmentDescription::default()
-                .format(image::Format::Hdr.into())
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .initial_layout(vk::ImageLayout::UNDEFINED)
-                .final_layout(vk::ImageLayout::GENERAL),
-            vk::AttachmentDescription::default()
-                .format(image::Format::Depth.into())
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .stencil_load_op(vk::AttachmentLoadOp::DONT_CARE)
-                .stencil_store_op(vk::AttachmentStoreOp::DONT_CARE)
-                .initial_layout(vk::ImageLayout::UNDEFINED)
-                .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL),
-        ];
-
-        let color_attachment_reference = vk::AttachmentReference::default()
-            .layout(vk::ImageLayout::GENERAL)
-            .attachment(0);
-
-        let depth_attachment_reference = vk::AttachmentReference::default()
-            .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
-            .attachment(1);
-
-        let subpass = vk::SubpassDescription::default()
-            .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS)
-            .color_attachments(slice::from_ref(&color_attachment_reference))
-            .depth_stencil_attachment(&depth_attachment_reference);
-
-        let dependency = vk::SubpassDependency::default()
-            .src_subpass(vk::SUBPASS_EXTERNAL)
-            .dst_subpass(0)
-            .src_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
-            .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-            .src_access_mask(vk::AccessFlags::SHADER_READ)
-            .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE);
-
-        let render_pass_info = vk::RenderPassCreateInfo::default()
-            .attachments(&attachments)
-            .subpasses(slice::from_ref(&subpass))
-            .dependencies(slice::from_ref(&dependency));
-
-        unsafe {
-            ctx.create_render_pass(&render_pass_info, None)
-                .expect("Failed to create render pass")
-        }
-    }
-
-    fn create_pipeline(
+    fn create_pipeline<const FORMAT: image::Format>(
         ctx: &Context,
-        render_pass: vk::RenderPass,
-        common: &common::Data,
+        common: &common::Data<FORMAT>,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
         let push_constant_ranges = vk::PushConstantRange {
             stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
@@ -159,11 +104,11 @@ impl Pipeline {
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
 
         let viewport = vk::Viewport::default()
-            .width(common.resolution.width as _)
-            .height(common.resolution.height as _)
+            .width(common.target.extent.width as _)
+            .height(common.target.extent.height as _)
             .max_depth(1.0);
 
-        let scissor = vk::Rect2D::default().extent(common.resolution);
+        let scissor = common.target.extent.into();
 
         let viewport_info = vk::PipelineViewportStateCreateInfo::default()
             .viewports(slice::from_ref(&viewport))
@@ -197,6 +142,11 @@ impl Pipeline {
             .max_depth_bounds(1.0)
             .stencil_test_enable(false);
 
+        let color_formats = [FORMAT.into()];
+        let mut rendering_info = vk::PipelineRenderingCreateInfo::default()
+            .color_attachment_formats(&color_formats)
+            .depth_attachment_format(image::Format::Depth.into());
+
         let create_info = vk::GraphicsPipelineCreateInfo::default()
             .stages(&shader_stages)
             .vertex_input_state(&vertex_input_info)
@@ -207,7 +157,7 @@ impl Pipeline {
             .color_blend_state(&color_blend_info)
             .depth_stencil_state(&depth_stencil_info)
             .layout(layout)
-            .render_pass(render_pass);
+            .push_next(&mut rendering_info);
 
         let pipeline = unsafe {
             ctx.create_graphics_pipelines(
@@ -254,21 +204,35 @@ impl Pipeline {
         (bindings, attributes)
     }
 
-    pub fn run(&self, ctx: &Context, common: &common::Data, sync_info: &SyncInfo) {
+    pub fn run<const FORMAT: image::Format>(
+        &self,
+        ctx: &Context,
+        common: &common::Data<FORMAT>,
+        sync_info: &SyncInfo,
+    ) {
         let commands = self.pipeline.begin_pipeline(ctx, 0);
 
-        let render_pass_info = vk::RenderPassBeginInfo::default()
-            .render_pass(self.render_pass)
-            .render_area(common.resolution.into())
-            .framebuffer(self.target.framebuffers[0])
-            .clear_values(framebuffers::CLEAR_VALUES);
+        let color_attachments = [vk::RenderingAttachmentInfo::default()
+            .image_view(common.target.view)
+            .image_layout(vk::ImageLayout::GENERAL)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)];
+
+        let depth_attachment = vk::RenderingAttachmentInfo::default()
+            .image_view(self.depth.view)
+            .image_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .clear_value(image::Image::CLEAR_VALUE);
+
+        let rendering_info = vk::RenderingInfo::default()
+            .render_area(self.depth.extent.into())
+            .layer_count(1)
+            .color_attachments(&color_attachments)
+            .depth_attachment(&depth_attachment);
 
         unsafe {
-            ctx.cmd_begin_render_pass(
-                commands.buffer,
-                &render_pass_info,
-                vk::SubpassContents::INLINE,
-            );
+            ctx.cmd_begin_rendering(commands.buffer, &rendering_info);
 
             ctx.cmd_bind_pipeline(
                 commands.buffer,
@@ -291,7 +255,7 @@ impl Pipeline {
             );
         }
 
-        let scene_info = &common.scene.host_info;
+        let scene_info = &common.scene.info.host;
         for instance in &scene_info.instances {
             let push_constants = inputs::RasterizerConstants {
                 model_transform: instance.transform,
@@ -331,16 +295,15 @@ impl Pipeline {
             }
         }
 
-        unsafe { ctx.cmd_end_render_pass(commands.buffer) };
+        unsafe { ctx.cmd_end_rendering(commands.buffer) };
 
         self.pipeline.submit_pipeline(ctx, 0, sync_info);
     }
 }
 
 impl Destroy<Context> for Pipeline {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        self.target.destroy_with(ctx);
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
+        self.depth.destroy_with(ctx);
         self.pipeline.destroy_with(ctx);
-        ctx.destroy_render_pass(self.render_pass, None);
     }
 }

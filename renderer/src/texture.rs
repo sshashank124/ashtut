@@ -22,7 +22,7 @@ impl<const FORMAT: image::Format> Texture<FORMAT> {
 }
 
 impl<const FORMAT: image::Format> Destroy<Context> for Texture<FORMAT> {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         self.sampler.destroy_with(ctx);
     }
 }

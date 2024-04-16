@@ -1,47 +1,32 @@
 use ash::vk;
 
-use super::{
-    commands::CommandsT,
-    context::{queue::Queue, Context},
-    Destroy,
-};
+use super::{commands::Commands, context::Context, Destroy};
 
-#[allow(clippy::module_name_repetitions)]
-pub type OneshotScope = Scope<false>;
-#[allow(clippy::module_name_repetitions)]
-pub type FlushableScope = Scope<true>;
-
-pub struct Scope<const MULTI_USE: bool> {
-    pub commands: CommandsT<{ MULTI_USE }>,
-    pub resources: Vec<Box<dyn Destroy<Context>>>,
+pub struct Scope {
+    pub commands: Commands,
+    resources: Vec<Box<dyn Destroy<Context>>>,
 }
 
-impl<const MULTI_USE: bool> Scope<{ MULTI_USE }> {
-    fn create(commands: CommandsT<{ MULTI_USE }>) -> Self {
+impl Scope {
+    pub fn new(commands: Commands) -> Self {
         Self {
             commands,
             resources: Vec::new(),
         }
     }
 
-    pub fn begin_on(ctx: &Context, name: impl AsRef<str>, queue: &Queue) -> Self {
-        let scope = Self::create(CommandsT::create_on_queue(ctx, name, queue));
-        scope.commands.begin_recording(ctx);
-        scope
-    }
-
     pub fn add_resource(&mut self, resource: impl Destroy<Context> + 'static) {
         self.resources.push(Box::new(resource));
     }
 
-    pub fn finish(mut self, ctx: &mut Context) {
+    pub fn finish(mut self, ctx: &Context) {
         self.commands.submit(ctx, &vk::SubmitInfo::default(), None);
         unsafe { self.destroy_with(ctx) };
     }
 }
 
-impl<const MULTI_USE: bool> Destroy<Context> for Scope<{ MULTI_USE }> {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+impl Destroy<Context> for Scope {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         self.commands.destroy_with(ctx);
         self.resources.destroy_with(ctx);
     }

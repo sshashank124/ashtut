@@ -15,10 +15,9 @@ layout(push_constant) uniform _PushConstants { PathtracerConstants constants; };
 
 layout(set=0, binding=0) uniform _Uniforms { Uniforms uniforms; };
 layout(set=0, binding=1) uniform _SceneDesc { SceneDesc scene_desc; };
-layout(set=0, binding=2) uniform sampler2D[] textures;
-
-layout(set=1, binding=0) uniform accelerationStructureEXT tlas;
-layout(set=1, binding=1, rgba32f) uniform image2D output_image;
+layout(set=0, binding=2) uniform accelerationStructureEXT tlas;
+layout(set=0, binding=3, rgba32f) uniform image2D output_image;
+layout(set=0, binding=4) uniform sampler2D[] textures;
 
 layout(buffer_reference, scalar) buffer Materials { Material m[]; };
 

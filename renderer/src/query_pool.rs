@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 use ash::vk;
 
-use crate::{context::Context, scope::Scope, Destroy};
+use crate::{context::Context, Destroy};
 
 pub struct QueryPool {
     pool: vk::QueryPool,
@@ -38,13 +38,13 @@ impl QueryPool {
         results
     }
 
-    pub fn reset<const M: bool>(&self, ctx: &Context, scope: &Scope<{ M }>) {
-        unsafe { ctx.cmd_reset_query_pool(scope.commands.buffer, self.pool, 0, self.count) };
+    pub fn reset(&self, ctx: &Context, command_buffer: vk::CommandBuffer) {
+        unsafe { ctx.cmd_reset_query_pool(command_buffer, self.pool, 0, self.count) };
     }
 }
 
 impl Destroy<Context> for QueryPool {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         ctx.destroy_query_pool(self.pool, None);
     }
 }

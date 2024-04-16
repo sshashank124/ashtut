@@ -3,7 +3,7 @@ use std::{marker::ConstParamTy, ops::Deref, slice};
 use ash::vk;
 use gpu_allocator::vulkan as gpu_alloc;
 
-use crate::{buffer::Buffer, context::Context, scope::OneshotScope, Destroy};
+use crate::{buffer::Buffer, context::Context, scope::Scope, Destroy};
 
 #[derive(PartialEq, Eq, ConstParamTy)]
 pub enum Format {
@@ -18,8 +18,8 @@ impl From<Format> for vk::Format {
         match format {
             Format::Hdr => Self::R32G32B32A32_SFLOAT,
             Format::Color => Self::R8G8B8A8_SRGB,
-            Format::Depth => Self::D32_SFLOAT,
-            Format::Swapchain => Self::UNDEFINED,
+            Format::Depth => Self::D16_UNORM,
+            Format::Swapchain => Self::B8G8R8A8_SRGB,
         }
     }
 }
@@ -27,13 +27,14 @@ impl From<Format> for vk::Format {
 pub struct Image<const FORMAT: Format> {
     pub image: vk::Image,
     pub view: vk::ImageView,
+    pub extent: vk::Extent2D,
     allocation: Option<gpu_alloc::Allocation>,
 }
 
 pub struct BarrierInfo {
     pub layout: vk::ImageLayout,
-    stage: vk::PipelineStageFlags,
-    access: vk::AccessFlags,
+    pub stage: vk::PipelineStageFlags,
+    pub access: vk::AccessFlags,
 }
 
 impl<const FORMAT: Format> Image<FORMAT> {
@@ -41,6 +42,7 @@ impl<const FORMAT: Format> Image<FORMAT> {
         ctx: &Context,
         name: impl AsRef<str>,
         image: vk::Image,
+        extent: vk::Extent2D,
         format: vk::Format,
         allocation: Option<gpu_alloc::Allocation>,
     ) -> Self {
@@ -61,6 +63,7 @@ impl<const FORMAT: Format> Image<FORMAT> {
         Self {
             image,
             view,
+            extent,
             allocation,
         }
     }
@@ -69,14 +72,15 @@ impl<const FORMAT: Format> Image<FORMAT> {
         ctx: &Context,
         name: impl AsRef<str>,
         image: vk::Image,
+        extent: vk::Extent2D,
         allocation: Option<gpu_alloc::Allocation>,
     ) -> Self {
-        Self::new_of_format(ctx, name, image, FORMAT.into(), allocation)
+        Self::new_of_format(ctx, name, image, extent, FORMAT.into(), allocation)
     }
 
     pub fn create(
-        ctx: &mut Context,
-        scope: &OneshotScope,
+        ctx: &Context,
+        command_buffer: vk::CommandBuffer,
         name: impl AsRef<str>,
         info: &vk::ImageCreateInfo,
         to: Option<&BarrierInfo>,
@@ -112,7 +116,7 @@ impl<const FORMAT: Format> Image<FORMAT> {
 
         let allocation = ctx
             .device
-            .allocator
+            .allocator()
             .allocate(&allocation_create_info)
             .expect("Failed to allocate memory");
 
@@ -121,10 +125,19 @@ impl<const FORMAT: Format> Image<FORMAT> {
                 .expect("Failed to bind memory");
         }
 
-        let image = Self::new(ctx, name, image, Some(allocation));
+        let image = Self::new(
+            ctx,
+            name,
+            image,
+            vk::Extent2D {
+                width: image_info.extent.width,
+                height: image_info.extent.height,
+            },
+            Some(allocation),
+        );
 
         if let Some(to) = to {
-            image.transition_layout(ctx, scope, &BarrierInfo::INIT, to);
+            image.transition_layout(ctx, command_buffer, &BarrierInfo::INIT, to);
         }
 
         image
@@ -134,16 +147,16 @@ impl<const FORMAT: Format> Image<FORMAT> {
         vk::ImageSubresourceRange {
             aspect_mask: Self::aspect_flags(),
             base_mip_level: 0,
-            level_count: 1,
+            level_count: vk::REMAINING_MIP_LEVELS,
             base_array_layer: 0,
-            layer_count: 1,
+            layer_count: vk::REMAINING_ARRAY_LAYERS,
         }
     }
 
-    fn transition_layout(
+    pub fn transition_layout(
         &self,
         ctx: &Context,
-        scope: &OneshotScope,
+        command_buffer: vk::CommandBuffer,
         from: &BarrierInfo,
         to: &BarrierInfo,
     ) {
@@ -159,7 +172,7 @@ impl<const FORMAT: Format> Image<FORMAT> {
 
         unsafe {
             ctx.cmd_pipeline_barrier(
-                scope.commands.buffer,
+                command_buffer,
                 from.stage,
                 to.stage,
                 vk::DependencyFlags::empty(),
@@ -187,8 +200,8 @@ impl<const FORMAT: Format> Image<FORMAT> {
 
 impl Image<{ Format::Color }> {
     pub fn create_from_image(
-        ctx: &mut Context,
-        scope: &mut OneshotScope,
+        ctx: &Context,
+        scope: &mut Scope,
         name: impl AsRef<str>,
         img: &image::RgbaImage,
     ) -> Self {
@@ -207,14 +220,20 @@ impl Image<{ Format::Color }> {
         let info = vk::ImageCreateInfo::default()
             .extent(extent)
             .usage(vk::ImageUsageFlags::TRANSFER_DST);
-        let image = Self::create(ctx, scope, name, &info, Some(&BarrierInfo::TRANSFER_DST));
+        let image = Self::create(
+            ctx,
+            scope.commands.buffer,
+            name,
+            &info,
+            Some(&BarrierInfo::TRANSFER_DST),
+        );
 
         // Copy data to image
-        image.record_copy_from(ctx, scope, &staging, extent);
+        image.cmd_copy_from(ctx, scope.commands.buffer, &staging, extent);
 
         image.transition_layout(
             ctx,
-            scope,
+            scope.commands.buffer,
             &BarrierInfo::TRANSFER_DST,
             &BarrierInfo::SHADER_READ,
         );
@@ -224,10 +243,10 @@ impl Image<{ Format::Color }> {
         image
     }
 
-    pub fn record_copy_from(
+    fn cmd_copy_from(
         &self,
         ctx: &Context,
-        scope: &OneshotScope,
+        command_buffer: vk::CommandBuffer,
         src: &Buffer,
         extent: vk::Extent3D,
     ) {
@@ -242,7 +261,7 @@ impl Image<{ Format::Color }> {
 
         unsafe {
             ctx.cmd_copy_buffer_to_image(
-                scope.commands.buffer,
+                command_buffer,
                 **src,
                 **self,
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -252,8 +271,17 @@ impl Image<{ Format::Color }> {
     }
 }
 
+impl Image<{ Format::Depth }> {
+    pub const CLEAR_VALUE: vk::ClearValue = vk::ClearValue {
+        depth_stencil: vk::ClearDepthStencilValue {
+            depth: 1.,
+            stencil: 0,
+        },
+    };
+}
+
 impl BarrierInfo {
-    const INIT: Self = Self {
+    pub const INIT: Self = Self {
         layout: vk::ImageLayout::UNDEFINED,
         stage: vk::PipelineStageFlags::TOP_OF_PIPE,
         access: vk::AccessFlags::empty(),
@@ -262,6 +290,11 @@ impl BarrierInfo {
         layout: vk::ImageLayout::GENERAL,
         stage: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
         access: vk::AccessFlags::empty(),
+    };
+    pub const COLOR_ATTACHMENT: Self = Self {
+        layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        stage: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+        access: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
     };
     pub const TRANSFER_DST: Self = Self {
         layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
@@ -273,14 +306,24 @@ impl BarrierInfo {
         stage: vk::PipelineStageFlags::FRAGMENT_SHADER,
         access: vk::AccessFlags::SHADER_READ,
     };
+    pub const DEPTH: Self = Self {
+        layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        stage: vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+        access: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+    };
+    pub const PRESENTATION: Self = Self {
+        layout: vk::ImageLayout::PRESENT_SRC_KHR,
+        stage: vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+        access: vk::AccessFlags::empty(),
+    };
 }
 
 impl<const FORMAT: Format> Destroy<Context> for Image<FORMAT> {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         ctx.destroy_image_view(self.view, None);
         if let Some(allocation) = self.allocation.take() {
             ctx.destroy_image(self.image, None);
-            ctx.allocator
+            ctx.allocator()
                 .free(allocation)
                 .expect("Failed to free allocated memory");
         }

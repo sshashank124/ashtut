@@ -2,16 +2,15 @@ use std::slice;
 
 use ash::vk;
 
-use crate::{context::Context, framebuffers::Framebuffers, image, scope::OneshotScope, Destroy};
+use crate::{context::Context, image, Destroy};
 
 pub struct Swapchain {
     pub swapchain: vk::SwapchainKHR,
-    images: Vec<image::Image<{ image::Format::Swapchain }>>,
-    pub target: Framebuffers<{ image::Format::Swapchain }>,
+    pub images: Vec<image::Image<{ image::Format::Swapchain }>>,
 }
 
 impl Swapchain {
-    pub fn create(ctx: &mut Context, scope: &OneshotScope, render_pass: vk::RenderPass) -> Self {
+    pub fn create(ctx: &Context) -> Self {
         let create_info = vk::SwapchainCreateInfoKHR::default()
             .surface(**ctx.surface)
             .min_image_count(ctx.surface.config.image_count)
@@ -46,26 +45,14 @@ impl Swapchain {
                 ctx,
                 format!("Swapchain - #{idx}"),
                 image,
+                ctx.surface.config.extent,
                 ctx.surface.config.surface_format.format,
                 None,
             )
         })
         .collect::<Vec<_>>();
 
-        let target = Framebuffers::create(
-            ctx,
-            scope,
-            "Swapchain",
-            render_pass,
-            ctx.surface.config.extent,
-            &images,
-        );
-
-        Self {
-            swapchain,
-            images,
-            target,
-        }
+        Self { swapchain, images }
     }
 
     pub fn get_next_image(&self, ctx: &Context, signal_to: vk::Semaphore) -> (u32, bool) {
@@ -100,8 +87,7 @@ impl Swapchain {
 }
 
 impl Destroy<Context> for Swapchain {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
-        self.target.destroy_with(ctx);
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         self.images.destroy_with(ctx);
         ctx.ext.swapchain.destroy_swapchain(self.swapchain, None);
     }

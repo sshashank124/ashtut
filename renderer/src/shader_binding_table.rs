@@ -18,7 +18,7 @@ pub struct RayTracingShaders {
 
 impl ShaderBindingTable {
     pub fn create(
-        ctx: &mut Context,
+        ctx: &Context,
         mut rt_shaders: RayTracingShaders,
         pipeline: vk::Pipeline,
     ) -> Self {
@@ -220,13 +220,13 @@ impl RayTracingShaders {
 }
 
 impl Destroy<Context> for ShaderBindingTable {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         self.buffer.destroy_with(ctx);
     }
 }
 
 impl Destroy<Context> for RayTracingShaders {
-    unsafe fn destroy_with(&mut self, ctx: &mut Context) {
+    unsafe fn destroy_with(&mut self, ctx: &Context) {
         ctx.destroy_shader_module(self.raygen, None);
         self.misses
             .iter()
