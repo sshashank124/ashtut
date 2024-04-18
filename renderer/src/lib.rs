@@ -27,13 +27,7 @@ use raw_window_handle::HasWindowHandle;
 
 use shared::inputs;
 
-use {
-    context::Context,
-    passes::{common, pathtracer, rasterizer, tonemap},
-    swapchain::Swapchain,
-    sync_info::SyncInfo,
-    sync_state::SyncState,
-};
+use {context::Context, swapchain::Swapchain, sync_info::SyncInfo, sync_state::SyncState};
 
 mod conf {
     pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 0);
@@ -47,16 +41,15 @@ trait Destroy<C> {
 
 pub struct Renderer {
     // passes
-    data: common::Data<{ conf::INTERMEDIATE_FORMAT }>,
-    pathtracer_pipeline: pathtracer::Pipeline,
-    rasterizer_pipeline: rasterizer::Pipeline,
+    data: passes::Data<{ conf::INTERMEDIATE_FORMAT }>,
+    pathtracer_pipeline: passes::pathtracer::Pipeline,
+    rasterizer_pipeline: passes::rasterizer::Pipeline,
     tonemap_pipeline:
-        tonemap::Pipeline<{ conf::INTERMEDIATE_FORMAT }, { image::Format::Swapchain }>,
+        passes::tonemap::Pipeline<{ conf::INTERMEDIATE_FORMAT }, { image::Format::Swapchain }>,
 
     swapchain: Swapchain,
 
     // state
-    uniforms: inputs::Uniforms,
     use_pathtracer: bool,
     frame: u32,
     state: SyncState,
@@ -78,13 +71,11 @@ impl Renderer {
     ) -> Self {
         let ctx = Context::init(name, window);
 
-        let data = common::Data::create(&ctx, scene, resolution);
-        let uniforms = inputs::Uniforms { camera };
-        data.uniforms.update(&ctx, &uniforms);
+        let data = passes::Data::create(&ctx, scene, resolution, camera);
 
-        let pathtracer_pipeline = pathtracer::Pipeline::create(&ctx, &data);
-        let rasterizer_pipeline = rasterizer::Pipeline::create(&ctx, &data);
-        let tonemap_pipeline = tonemap::Pipeline::create(&ctx, &data);
+        let pathtracer_pipeline = passes::pathtracer::Pipeline::create(&ctx, &data);
+        let rasterizer_pipeline = passes::rasterizer::Pipeline::create(&ctx, &data);
+        let tonemap_pipeline = passes::tonemap::Pipeline::create(&ctx, &data);
 
         let swapchain = Swapchain::create(&ctx);
 
@@ -98,7 +89,6 @@ impl Renderer {
 
             swapchain,
 
-            uniforms,
             frame: 0,
             use_pathtracer: true,
             state,
@@ -117,6 +107,8 @@ impl Renderer {
                 )
                 .expect("Failed to wait for fence");
         }
+
+        self.data.uniforms.update(&self.ctx);
 
         let sync_info = SyncInfo {
             wait_on: vec![],
@@ -170,8 +162,7 @@ impl Renderer {
     }
 
     pub fn update_camera(&mut self, camera: inputs::Camera) {
-        self.uniforms.camera = camera;
-        self.data.uniforms.update(&self.ctx, &self.uniforms);
+        self.data.uniforms.update_camera(camera);
         self.frame = 0;
     }
 

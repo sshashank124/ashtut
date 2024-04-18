@@ -12,8 +12,6 @@ use crate::{
     Destroy,
 };
 
-use super::common;
-
 pub mod conf {
     pub const NAME: &str = "Pathtracer";
     pub const SHADER_RAY_GENERATION: &str = env!("pathtracer.rgen.glsl");
@@ -27,7 +25,7 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn create<const FORMAT: image::Format>(ctx: &Context, data: &common::Data<FORMAT>) -> Self {
+    pub fn create<const FORMAT: image::Format>(ctx: &Context, data: &super::Data<FORMAT>) -> Self {
         let ray_tracing_shaders = RayTracingShaders::new(
             ctx,
             conf::SHADER_RAY_GENERATION,
@@ -59,7 +57,7 @@ impl Pipeline {
 
     fn create_pipeline<const FORMAT: image::Format>(
         ctx: &Context,
-        data: &common::Data<FORMAT>,
+        data: &super::Data<FORMAT>,
         ray_tracing_shaders: &RayTracingShaders,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
         let push_constant_ranges = vk::PushConstantRange {
@@ -103,7 +101,7 @@ impl Pipeline {
     pub fn run<const FORMAT: image::Format>(
         &self,
         ctx: &Context,
-        data: &common::Data<FORMAT>,
+        data: &super::Data<FORMAT>,
         frame: u32,
         sync_info: &SyncInfo,
     ) {

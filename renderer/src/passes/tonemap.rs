@@ -7,8 +7,6 @@ use crate::{
     sync_info::SyncInfo, Destroy,
 };
 
-use super::common;
-
 mod conf {
     pub const NAME: &str = "Tonemap";
     pub const SHADER_VERT: &str = env!("tonemap.vert.glsl");
@@ -27,7 +25,7 @@ pub struct Pipeline<const INPUT_FORMAT: image::Format, const OUTPUT_FORMAT: imag
 }
 
 impl<const FORMAT: image::Format> Data<FORMAT> {
-    pub fn create(ctx: &Context, data: &common::Data<FORMAT>) -> Self {
+    pub fn create(ctx: &Context, data: &super::Data<FORMAT>) -> Self {
         let descriptors = Self::create_descriptors(ctx);
 
         let input_image = image::Image::new(
@@ -113,7 +111,7 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
 impl<const INPUT_FORMAT: image::Format, const OUTPUT_FORMAT: image::Format>
     Pipeline<INPUT_FORMAT, OUTPUT_FORMAT>
 {
-    pub fn create(ctx: &Context, data: &common::Data<INPUT_FORMAT>) -> Self {
+    pub fn create(ctx: &Context, data: &super::Data<INPUT_FORMAT>) -> Self {
         let data = Data::create(ctx, data);
 
         let (layout, pipeline) = Self::create_pipeline(ctx, data.descriptors.layout);

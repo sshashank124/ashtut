@@ -8,8 +8,6 @@ use crate::{
     commands::Commands, context::Context, image, memory, pipeline, sync_info::SyncInfo, Destroy,
 };
 
-use super::common;
-
 pub mod conf {
     pub const NAME: &str = "Rasterizer";
     pub const SHADER_VERT: &str = env!("rasterizer.vert.glsl");
@@ -22,7 +20,7 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn create<const FORMAT: image::Format>(ctx: &Context, data: &common::Data<FORMAT>) -> Self {
+    pub fn create<const FORMAT: image::Format>(ctx: &Context, data: &super::Data<FORMAT>) -> Self {
         let commands = Commands::begin_on_queue(
             ctx,
             format!("{} - Initialization", conf::NAME),
@@ -63,7 +61,7 @@ impl Pipeline {
 
     fn create_pipeline<const FORMAT: image::Format>(
         ctx: &Context,
-        data: &common::Data<FORMAT>,
+        data: &super::Data<FORMAT>,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
         let push_constant_ranges = vk::PushConstantRange {
             stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
@@ -207,7 +205,7 @@ impl Pipeline {
     pub fn run<const FORMAT: image::Format>(
         &self,
         ctx: &Context,
-        data: &common::Data<FORMAT>,
+        data: &super::Data<FORMAT>,
         sync_info: &SyncInfo,
     ) {
         let commands = self.pipeline.begin_pipeline(ctx, 0);
