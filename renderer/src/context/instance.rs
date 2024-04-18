@@ -11,10 +11,6 @@ use super::{
     bytes_to_string, extensions, physical_device::PhysicalDevice, queue, surface,
 };
 
-mod conf {
-    pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 0);
-}
-
 pub struct Instance {
     pub entry: ash::Entry,
     instance: ash::Instance,
@@ -27,7 +23,7 @@ impl Instance {
         let app_name = CString::new(app_name).unwrap();
         let app_info = vk::ApplicationInfo::default()
             .application_name(&app_name)
-            .api_version(conf::VK_API_VERSION);
+            .api_version(crate::conf::VK_API_VERSION);
 
         let instance_create_info = vk::InstanceCreateInfo::default()
             .application_info(&app_info)

@@ -2,6 +2,8 @@ use ash::vk;
 
 use shared::inputs;
 
+use crate::memory;
+
 use super::{buffer::Buffer, context::Context, Destroy};
 
 pub struct Uniforms {
@@ -17,16 +19,16 @@ impl Uniforms {
 
         let buffer = Buffer::create(
             ctx,
-            "Uniforms",
+            "Uniforms".to_owned(),
             buffer_info,
-            gpu_allocator::MemoryLocation::CpuToGpu,
+            &memory::purpose::staging(),
         );
 
         Self { buffer }
     }
 
-    pub fn update(&mut self, uniforms: &inputs::Uniforms) {
-        self.buffer.fill_with(uniforms);
+    pub fn update(&self, ctx: &Context, uniforms: &inputs::Uniforms) {
+        self.buffer.fill_with(ctx, uniforms);
     }
 }
 

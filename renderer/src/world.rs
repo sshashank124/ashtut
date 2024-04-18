@@ -7,6 +7,7 @@ use super::{
     buffer::Buffer,
     context::Context,
     image::{Format, Image},
+    memory,
     scope::Scope,
     texture::Texture,
     Destroy,
@@ -33,7 +34,7 @@ impl Scene {
     pub fn create(ctx: &Context, scene: scene::Scene) -> Self {
         let mut scope = Scope::new(Commands::begin_on_queue(
             ctx,
-            "Scene - Initialization",
+            "Scene - Initialization".to_owned(),
             ctx.queues.transfer(),
         ));
 
@@ -53,7 +54,7 @@ impl Scene {
 
         let mut scope = Scope::new(Commands::begin_on_queue(
             ctx,
-            "Scene - Initialization - Textures",
+            "Scene - Initialization - Textures".to_owned(),
             ctx.queues.graphics(),
         ));
 
@@ -98,9 +99,10 @@ impl Scene {
             Buffer::create_with_staged_data(
                 ctx,
                 scope,
-                "Vertices",
+                "Vertices".to_owned(),
                 create_info,
                 bytemuck::cast_slice(&scene.vertices),
+                memory::Priority::Medium,
             )
         };
 
@@ -115,9 +117,10 @@ impl Scene {
             Buffer::create_with_staged_data(
                 ctx,
                 scope,
-                "Indices",
+                "Indices".to_owned(),
                 create_info,
                 bytemuck::cast_slice(&scene.indices),
+                memory::Priority::Medium,
             )
         };
 
@@ -132,9 +135,10 @@ impl Scene {
         Buffer::create_with_staged_data(
             ctx,
             scope,
-            "Primitives",
+            "Primitives".to_owned(),
             create_info,
             bytemuck::cast_slice(&scene.primitive_infos),
+            memory::Priority::Medium,
         )
     }
 
@@ -146,9 +150,10 @@ impl Scene {
         Buffer::create_with_staged_data(
             ctx,
             scope,
-            "Materials",
+            "Materials".to_owned(),
             create_info,
             bytemuck::cast_slice(&scene.materials),
+            memory::Priority::Medium,
         )
     }
 
@@ -163,9 +168,10 @@ impl Scene {
         Buffer::create_with_staged_data(
             ctx,
             scope,
-            "Scene Desc",
+            "Scene Desc".to_owned(),
             create_info,
             bytemuck::bytes_of(scene_desc),
+            memory::Priority::Medium,
         )
     }
 
@@ -182,7 +188,7 @@ impl Scene {
             vec![Image::create_from_image(
                 ctx,
                 scope,
-                "Placeholder Texture Pixel",
+                "Placeholder Texture Pixel".to_owned(),
                 &image::RgbaImage::new(1, 1),
             )]
         } else {
@@ -196,7 +202,7 @@ impl Scene {
                     Image::create_from_image(
                         ctx,
                         scope,
-                        source.to_str().unwrap_or_default(),
+                        source.to_str().unwrap_or_default().to_owned(),
                         &image,
                     )
                 })

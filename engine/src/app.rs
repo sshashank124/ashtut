@@ -44,7 +44,7 @@ impl App {
         let inputs = input::State::default();
 
         let renderer = Renderer::create(
-            window.title(),
+            &window.title(),
             window,
             scene,
             conf::FRAME_RESOLUTION,

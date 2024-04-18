@@ -14,14 +14,13 @@ pub struct Commands {
 }
 
 impl Commands {
-    pub fn begin_on_queue(ctx: &Context, name: impl AsRef<str>, queue: &Queue) -> Self {
+    pub fn begin_on_queue(ctx: &Context, name: String, queue: &Queue) -> Self {
         let c = Self::create_on_queue(ctx, name, queue);
         c.begin_recording(ctx);
         c
     }
 
-    pub fn create_on_queue(ctx: &Context, name: impl AsRef<str>, queue: &Queue) -> Self {
-        let name = String::from(name.as_ref());
+    pub fn create_on_queue(ctx: &Context, name: String, queue: &Queue) -> Self {
         let pool = {
             let info = vk::CommandPoolCreateInfo::default().queue_family_index(queue.family_index);
             unsafe {
@@ -29,7 +28,7 @@ impl Commands {
                     .expect("Failed to create command pool")
             }
         };
-        ctx.set_debug_name(pool, name.clone() + " - Command Pool");
+        ctx.set_debug_name(pool, &(name.clone() + " - Command Pool"));
 
         let buffer = unsafe {
             ctx.allocate_command_buffers(&vk::CommandBufferAllocateInfo {
@@ -39,7 +38,7 @@ impl Commands {
             })
             .expect("Failed to allocate command buffer")[0]
         };
-        ctx.set_debug_name(buffer, name + " - Command Buffer");
+        ctx.set_debug_name(buffer, &(name + " - Command Buffer"));
 
         Self {
             queue: **queue,

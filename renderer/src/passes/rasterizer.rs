@@ -4,7 +4,9 @@ use ash::vk;
 
 use shared::{inputs, scene};
 
-use crate::{commands::Commands, context::Context, image, pipeline, sync_info::SyncInfo, Destroy};
+use crate::{
+    commands::Commands, context::Context, image, memory, pipeline, sync_info::SyncInfo, Destroy,
+};
 
 use super::common;
 
@@ -20,10 +22,7 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn create<const FORMAT: image::Format>(
-        ctx: &Context,
-        common: &common::Data<FORMAT>,
-    ) -> Self {
+    pub fn create<const FORMAT: image::Format>(ctx: &Context, data: &common::Data<FORMAT>) -> Self {
         let commands = Commands::begin_on_queue(
             ctx,
             format!("{} - Initialization", conf::NAME),
@@ -31,24 +30,25 @@ impl Pipeline {
         );
 
         let depth = {
-            let info = vk::ImageCreateInfo::default().extent(common.target.extent.into());
+            let info = vk::ImageCreateInfo::default().extent(data.target.extent.into());
 
             image::Image::create(
                 ctx,
                 commands.buffer,
                 format!("{} Target - Depth", conf::NAME),
                 &info,
+                &memory::purpose::dedicated(),
                 Some(&image::BarrierInfo::DEPTH),
             )
         };
 
-        let (layout, pipeline) = Self::create_pipeline(ctx, common);
+        let (layout, pipeline) = Self::create_pipeline(ctx, data);
 
-        let descriptor_sets = common.descriptors.sets.iter().copied().map(|a| [a]);
+        let descriptor_sets = data.descriptors.sets.iter().copied().map(|a| [a]);
 
         let pipeline = pipeline::Pipeline::new(
             ctx,
-            conf::NAME,
+            conf::NAME.to_owned(),
             descriptor_sets,
             layout,
             pipeline,
@@ -63,7 +63,7 @@ impl Pipeline {
 
     fn create_pipeline<const FORMAT: image::Format>(
         ctx: &Context,
-        common: &common::Data<FORMAT>,
+        data: &common::Data<FORMAT>,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
         let push_constant_ranges = vk::PushConstantRange {
             stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
@@ -72,7 +72,7 @@ impl Pipeline {
         };
 
         let layout_create_info = vk::PipelineLayoutCreateInfo::default()
-            .set_layouts(slice::from_ref(&common.descriptors.layout))
+            .set_layouts(slice::from_ref(&data.descriptors.layout))
             .push_constant_ranges(slice::from_ref(&push_constant_ranges));
 
         let layout = unsafe {
@@ -104,11 +104,11 @@ impl Pipeline {
             .topology(vk::PrimitiveTopology::TRIANGLE_LIST);
 
         let viewport = vk::Viewport::default()
-            .width(common.target.extent.width as _)
-            .height(common.target.extent.height as _)
+            .width(data.target.extent.width as _)
+            .height(data.target.extent.height as _)
             .max_depth(1.0);
 
-        let scissor = common.target.extent.into();
+        let scissor = data.target.extent.into();
 
         let viewport_info = vk::PipelineViewportStateCreateInfo::default()
             .viewports(slice::from_ref(&viewport))
@@ -207,13 +207,13 @@ impl Pipeline {
     pub fn run<const FORMAT: image::Format>(
         &self,
         ctx: &Context,
-        common: &common::Data<FORMAT>,
+        data: &common::Data<FORMAT>,
         sync_info: &SyncInfo,
     ) {
         let commands = self.pipeline.begin_pipeline(ctx, 0);
 
         let color_attachments = [vk::RenderingAttachmentInfo::default()
-            .image_view(common.target.view)
+            .image_view(data.target.view)
             .image_layout(vk::ImageLayout::GENERAL)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)];
@@ -243,19 +243,19 @@ impl Pipeline {
             ctx.cmd_bind_vertex_buffers(
                 commands.buffer,
                 0,
-                slice::from_ref(&common.scene.vertices),
+                slice::from_ref(&data.scene.vertices),
                 &[0],
             );
 
             ctx.cmd_bind_index_buffer(
                 commands.buffer,
-                *common.scene.indices,
+                *data.scene.indices,
                 0,
                 vk::IndexType::UINT32,
             );
         }
 
-        let scene_info = &common.scene.info.host;
+        let scene_info = &data.scene.info.host;
         for instance in &scene_info.instances {
             let push_constants = inputs::RasterizerConstants {
                 model_transform: instance.transform,

@@ -27,21 +27,21 @@ pub struct Pipeline<const INPUT_FORMAT: image::Format, const OUTPUT_FORMAT: imag
 }
 
 impl<const FORMAT: image::Format> Data<FORMAT> {
-    pub fn create(ctx: &Context, common: &common::Data<FORMAT>) -> Self {
+    pub fn create(ctx: &Context, data: &common::Data<FORMAT>) -> Self {
         let descriptors = Self::create_descriptors(ctx);
 
         let input_image = image::Image::new(
             ctx,
             format!("{} Input", conf::NAME),
-            common.target.image,
-            common.target.extent,
+            data.target.image,
+            data.target.extent,
             None,
         );
 
         let data = Self {
             descriptors,
             input_image,
-            sampler: Sampler::create(ctx, conf::NAME),
+            sampler: Sampler::create(ctx, conf::NAME.to_owned()),
         };
         data.bind_to_descriptor_sets(ctx);
         data
@@ -113,8 +113,8 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
 impl<const INPUT_FORMAT: image::Format, const OUTPUT_FORMAT: image::Format>
     Pipeline<INPUT_FORMAT, OUTPUT_FORMAT>
 {
-    pub fn create(ctx: &Context, common: &common::Data<INPUT_FORMAT>) -> Self {
-        let data = Data::create(ctx, common);
+    pub fn create(ctx: &Context, data: &common::Data<INPUT_FORMAT>) -> Self {
+        let data = Data::create(ctx, data);
 
         let (layout, pipeline) = Self::create_pipeline(ctx, data.descriptors.layout);
 
@@ -122,7 +122,7 @@ impl<const INPUT_FORMAT: image::Format, const OUTPUT_FORMAT: image::Format>
 
         let pipeline = pipeline::Pipeline::new(
             ctx,
-            conf::NAME,
+            conf::NAME.to_owned(),
             descriptor_sets,
             layout,
             pipeline,

@@ -9,7 +9,7 @@ pub struct Sampler {
 }
 
 impl Sampler {
-    pub fn create(ctx: &Context, name: impl AsRef<str>) -> Self {
+    pub fn create(ctx: &Context, name: String) -> Self {
         let info = vk::SamplerCreateInfo::default()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)
@@ -33,7 +33,7 @@ impl Sampler {
             ctx.create_sampler(&info, None)
                 .expect("Failed to create sampler")
         };
-        ctx.set_debug_name(sampler, String::from(name.as_ref()) + " - Sampler");
+        ctx.set_debug_name(sampler, &(name + " - Sampler"));
 
         Self { sampler }
     }

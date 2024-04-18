@@ -1,6 +1,6 @@
 use ash::vk;
 
-use crate::{buffer::Buffer, context::Context, Destroy};
+use crate::{buffer::Buffer, context::Context, memory, Destroy};
 
 pub struct ShaderBindingTable {
     pub buffer: Buffer,
@@ -30,22 +30,22 @@ impl ShaderBindingTable {
                 props.shader_group_base_alignment as _,
             )
         };
-        let handle_size_aligned = crate::util::align_to(handle_size, handle_alignment);
+        let handle_size_aligned = memory::align_to(handle_size, handle_alignment);
 
         /* prepare regions */
 
         let mut raygen_region = vk::StridedDeviceAddressRegionKHR::default()
-            .stride(crate::util::align_to(handle_size, base_alignment) as _)
-            .size(crate::util::align_to(handle_size, base_alignment) as _);
+            .stride(memory::align_to(handle_size, base_alignment) as _)
+            .size(memory::align_to(handle_size, base_alignment) as _);
         let mut misses_region = vk::StridedDeviceAddressRegionKHR::default()
             .stride(handle_size_aligned as _)
-            .size(crate::util::align_to(
+            .size(memory::align_to(
                 rt_shaders.misses.len() * handle_size_aligned,
                 base_alignment,
             ) as _);
         let mut closest_hits_region = vk::StridedDeviceAddressRegionKHR::default()
             .stride(handle_size_aligned as _)
-            .size(crate::util::align_to(
+            .size(memory::align_to(
                 rt_shaders.closest_hits.len() * handle_size_aligned,
                 base_alignment,
             ) as _);
@@ -85,7 +85,7 @@ impl ShaderBindingTable {
 
         let buffer = Buffer::create_with_data(
             ctx,
-            "Shader Binding Table",
+            "Shader Binding Table".to_owned(),
             vk::BufferCreateInfo {
                 usage: vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                     | vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,

@@ -6,6 +6,7 @@ mod commands;
 mod context;
 mod descriptors;
 mod image;
+mod memory;
 mod passes;
 mod pipeline;
 mod query_pool;
@@ -35,6 +36,8 @@ use {
 };
 
 mod conf {
+    pub const VK_API_VERSION: u32 = ash::vk::make_api_version(0, 1, 3, 0);
+
     pub const INTERMEDIATE_FORMAT: super::image::Format = super::image::Format::Hdr;
 }
 
@@ -44,7 +47,7 @@ trait Destroy<C> {
 
 pub struct Renderer {
     // passes
-    common: common::Data<{ conf::INTERMEDIATE_FORMAT }>,
+    data: common::Data<{ conf::INTERMEDIATE_FORMAT }>,
     pathtracer_pipeline: pathtracer::Pipeline,
     rasterizer_pipeline: rasterizer::Pipeline,
     tonemap_pipeline:
@@ -67,28 +70,28 @@ pub enum Error {
 
 impl Renderer {
     pub fn create(
-        name: impl AsRef<str>,
+        name: &str,
         window: &impl HasWindowHandle,
         scene: scene::Scene,
         resolution: (u32, u32),
         camera: inputs::Camera,
     ) -> Self {
-        let ctx = Context::init(name.as_ref(), window);
+        let ctx = Context::init(name, window);
 
-        let mut common = common::Data::create(&ctx, scene, resolution);
+        let data = common::Data::create(&ctx, scene, resolution);
         let uniforms = inputs::Uniforms { camera };
-        common.uniforms.update(&uniforms);
+        data.uniforms.update(&ctx, &uniforms);
 
-        let pathtracer_pipeline = pathtracer::Pipeline::create(&ctx, &common);
-        let rasterizer_pipeline = rasterizer::Pipeline::create(&ctx, &common);
-        let tonemap_pipeline = tonemap::Pipeline::create(&ctx, &common);
+        let pathtracer_pipeline = pathtracer::Pipeline::create(&ctx, &data);
+        let rasterizer_pipeline = rasterizer::Pipeline::create(&ctx, &data);
+        let tonemap_pipeline = tonemap::Pipeline::create(&ctx, &data);
 
         let swapchain = Swapchain::create(&ctx);
 
         let state = SyncState::create(&ctx);
 
         Self {
-            common,
+            data,
             pathtracer_pipeline,
             rasterizer_pipeline,
             tonemap_pipeline,
@@ -122,10 +125,10 @@ impl Renderer {
         };
         if self.use_pathtracer {
             self.pathtracer_pipeline
-                .run(&self.ctx, &self.common, self.frame, &sync_info);
+                .run(&self.ctx, &self.data, self.frame, &sync_info);
         } else {
             self.rasterizer_pipeline
-                .run(&self.ctx, &self.common, &sync_info);
+                .run(&self.ctx, &self.data, &sync_info);
         }
 
         let (image_index, needs_recreating) = self
@@ -168,7 +171,7 @@ impl Renderer {
 
     pub fn update_camera(&mut self, camera: inputs::Camera) {
         self.uniforms.camera = camera;
-        self.common.uniforms.update(&self.uniforms);
+        self.data.uniforms.update(&self.ctx, &self.uniforms);
         self.frame = 0;
     }
 
@@ -178,12 +181,16 @@ impl Renderer {
     }
 
     pub fn recreate(&mut self) -> bool {
-        unsafe { self.ctx.wait_idle() };
+        unsafe {
+            self.ctx.wait_idle();
+        }
 
         let is_valid = self.ctx.refresh_surface_capabilities();
 
         if is_valid {
-            unsafe { self.swapchain.destroy_with(&self.ctx) };
+            unsafe {
+                self.swapchain.destroy_with(&self.ctx);
+            }
             self.swapchain = Swapchain::create(&self.ctx);
         }
 
@@ -203,7 +210,7 @@ impl Drop for Renderer {
 
             self.rasterizer_pipeline.destroy_with(&self.ctx);
             self.pathtracer_pipeline.destroy_with(&self.ctx);
-            self.common.destroy_with(&self.ctx);
+            self.data.destroy_with(&self.ctx);
         }
     }
 }

@@ -3,8 +3,8 @@ use std::slice;
 use ash::vk;
 
 use crate::{
-    commands::Commands, context::Context, descriptors::Descriptors, image, uniforms::Uniforms,
-    world::Scene, Destroy,
+    commands::Commands, context::Context, descriptors::Descriptors, image, memory,
+    uniforms::Uniforms, world::Scene, Destroy,
 };
 
 mod conf {
@@ -46,6 +46,7 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
                 commands.buffer,
                 format!("{} Target", conf::NAME),
                 &info,
+                &memory::purpose::dedicated(),
                 Some(&image::BarrierInfo::GENERAL),
             )
         };

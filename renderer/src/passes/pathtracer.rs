@@ -27,10 +27,7 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    pub fn create<const FORMAT: image::Format>(
-        ctx: &Context,
-        common: &common::Data<FORMAT>,
-    ) -> Self {
+    pub fn create<const FORMAT: image::Format>(ctx: &Context, data: &common::Data<FORMAT>) -> Self {
         let ray_tracing_shaders = RayTracingShaders::new(
             ctx,
             conf::SHADER_RAY_GENERATION,
@@ -38,15 +35,15 @@ impl Pipeline {
             conf::SHADER_CLOSEST_HITS,
         );
 
-        let (layout, pipeline) = Self::create_pipeline(ctx, common, &ray_tracing_shaders);
+        let (layout, pipeline) = Self::create_pipeline(ctx, data, &ray_tracing_shaders);
 
         let shader_binding_table = ShaderBindingTable::create(ctx, ray_tracing_shaders, pipeline);
 
-        let descriptor_sets = common.descriptors.sets.iter().copied().map(|a| [a]);
+        let descriptor_sets = data.descriptors.sets.iter().copied().map(|a| [a]);
 
         let pipeline = pipeline::Pipeline::new(
             ctx,
-            conf::NAME,
+            conf::NAME.to_owned(),
             descriptor_sets,
             layout,
             pipeline,
@@ -62,7 +59,7 @@ impl Pipeline {
 
     fn create_pipeline<const FORMAT: image::Format>(
         ctx: &Context,
-        common: &common::Data<FORMAT>,
+        data: &common::Data<FORMAT>,
         ray_tracing_shaders: &RayTracingShaders,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
         let push_constant_ranges = vk::PushConstantRange {
@@ -72,7 +69,7 @@ impl Pipeline {
         };
 
         let layout_create_info = vk::PipelineLayoutCreateInfo::default()
-            .set_layouts(slice::from_ref(&common.descriptors.layout))
+            .set_layouts(slice::from_ref(&data.descriptors.layout))
             .push_constant_ranges(slice::from_ref(&push_constant_ranges));
 
         let layout = unsafe {
@@ -106,7 +103,7 @@ impl Pipeline {
     pub fn run<const FORMAT: image::Format>(
         &self,
         ctx: &Context,
-        common: &common::Data<FORMAT>,
+        data: &common::Data<FORMAT>,
         frame: u32,
         sync_info: &SyncInfo,
     ) {
@@ -144,8 +141,8 @@ impl Pipeline {
                 &self.shader_binding_table.misses_region,
                 &self.shader_binding_table.closest_hits_region,
                 &self.shader_binding_table.call_region,
-                common.target.extent.width,
-                common.target.extent.height,
+                data.target.extent.width,
+                data.target.extent.height,
                 1,
             );
         }

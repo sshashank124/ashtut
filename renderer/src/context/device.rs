@@ -2,11 +2,9 @@ use std::{
     fs::File,
     mem::ManuallyDrop,
     ops::{Deref, DerefMut},
-    sync,
 };
 
 use ash::vk;
-use gpu_allocator::vulkan as gpu_alloc;
 
 use super::{
     extensions,
@@ -20,7 +18,7 @@ pub struct Device {
     device: ash::Device,
     pub ext: extensions::Handles,
     pub queues: Queues,
-    allocator: ManuallyDrop<sync::RwLock<gpu_alloc::Allocator>>,
+    pub allocator: ManuallyDrop<vk_mem::Allocator>,
 }
 
 impl Device {
@@ -29,79 +27,88 @@ impl Device {
         physical_device: &PhysicalDevice,
         families: &Families,
     ) -> Self {
-        let (required_features, mut additional_required_features) = Features::required();
-        let mut required_features = additional_required_features
-            .iter_mut()
-            .fold(required_features, |acc_features, f| {
-                acc_features.push_next(f.as_mut())
-            });
+        let device = {
+            let (required_features, mut additional_required_features) = Features::required();
+            let mut required_features = additional_required_features
+                .iter_mut()
+                .fold(required_features, |acc_features, f| {
+                    acc_features.push_next(f.as_mut())
+                });
 
-        let queue_create_infos = Queues::create_infos(families);
+            let queue_create_infos = Queues::create_infos(families);
 
-        let create_info = vk::DeviceCreateInfo::default()
-            .enabled_extension_names(extensions::REQUIRED_FOR_DEVICE)
-            .push_next(&mut required_features)
-            .queue_create_infos(&queue_create_infos);
+            let create_info = vk::DeviceCreateInfo::default()
+                .enabled_extension_names(extensions::REQUIRED_FOR_DEVICE)
+                .push_next(&mut required_features)
+                .queue_create_infos(&queue_create_infos);
 
-        let device = unsafe {
-            instance
-                .create_device(**physical_device, &create_info, None)
-                .expect("Failed to create logical device")
+            unsafe {
+                instance
+                    .create_device(**physical_device, &create_info, None)
+                    .expect("Failed to create logical device")
+            }
         };
 
         let ext = extensions::Handles::create(instance, &device);
 
         let queues = Queues::create(&device, families);
 
-        let allocator_create_info = gpu_alloc::AllocatorCreateDesc {
-            instance: (*instance).clone(),
-            device: device.clone(),
-            physical_device: **physical_device,
-            debug_settings: gpu_allocator::AllocatorDebugSettings {
-                log_memory_information: true,
-                log_leaks_on_shutdown: true,
-                store_stack_traces: true,
-                log_allocations: true,
-                log_frees: true,
-                log_stack_traces: true,
-            },
-            buffer_device_address: true,
-            allocation_sizes: Default::default(),
-        };
+        let allocator = {
+            let create_info =
+                vk_mem::AllocatorCreateInfo::new(instance, &device, **physical_device)
+                    .vulkan_api_version(crate::conf::VK_API_VERSION)
+                    .flags(
+                        vk_mem::AllocatorCreateFlags::KHR_DEDICATED_ALLOCATION
+                            | vk_mem::AllocatorCreateFlags::KHR_BIND_MEMORY2
+                            | vk_mem::AllocatorCreateFlags::BUFFER_DEVICE_ADDRESS
+                            | vk_mem::AllocatorCreateFlags::EXT_MEMORY_PRIORITY,
+                    );
 
-        let allocator =
-            gpu_alloc::Allocator::new(&allocator_create_info).expect("Failed to create allocator");
+            ManuallyDrop::new(
+                vk_mem::Allocator::new(create_info).expect("Failed to create allocator"),
+            )
+        };
 
         Self {
             device,
             ext,
             queues,
-            allocator: ManuallyDrop::new(sync::RwLock::new(allocator)),
+            allocator,
         }
     }
 
-    pub fn create_semaphore(&self, name: impl AsRef<str>) -> vk::Semaphore {
-        let create_info = vk::SemaphoreCreateInfo::default();
-        unsafe {
-            self.device
-                .create_semaphore(&create_info, None)
-                .unwrap_or_else(|err| {
-                    panic!("Failed to create `{}` semaphore: {err}", name.as_ref())
-                })
-        }
+    pub fn create_semaphore(&self, name: &str) -> vk::Semaphore {
+        let semaphore = {
+            let create_info = vk::SemaphoreCreateInfo::default();
+
+            unsafe {
+                self.device
+                    .create_semaphore(&create_info, None)
+                    .unwrap_or_else(|err| panic!("Failed to create `{name}` semaphore: {err}"))
+            }
+        };
+        self.set_debug_name(semaphore, name);
+
+        semaphore
     }
 
-    pub fn create_fence(&self, name: impl AsRef<str>, signaled: bool) -> vk::Fence {
-        let create_info = vk::FenceCreateInfo::default().flags(if signaled {
-            vk::FenceCreateFlags::SIGNALED
-        } else {
-            vk::FenceCreateFlags::empty()
-        });
-        unsafe {
-            self.device
-                .create_fence(&create_info, None)
-                .unwrap_or_else(|err| panic!("Failed to create `{}` fence: {err}", name.as_ref()))
-        }
+    pub fn create_fence(&self, name: &str, signaled: bool) -> vk::Fence {
+        let fence = {
+            let create_info = vk::FenceCreateInfo::default().flags(if signaled {
+                vk::FenceCreateFlags::SIGNALED
+            } else {
+                vk::FenceCreateFlags::empty()
+            });
+
+            unsafe {
+                self.device
+                    .create_fence(&create_info, None)
+                    .unwrap_or_else(|err| panic!("Failed to create `{name}` fence: {err}"))
+            }
+        };
+        self.set_debug_name(fence, name);
+
+        fence
     }
 
     pub fn create_shader_module_from_file(&self, filepath: &str) -> vk::ShaderModule {
@@ -121,8 +128,8 @@ impl Device {
             .expect("Failed to wait for device to idle");
     }
 
-    pub fn set_debug_name<H: vk::Handle>(&self, object: H, name: impl AsRef<str>) {
-        let object_name = std::ffi::CString::new(name.as_ref()).unwrap();
+    pub fn set_debug_name<H: vk::Handle>(&self, object: H, name: &str) {
+        let object_name = std::ffi::CString::new(name).unwrap();
         let name_info = vk::DebugUtilsObjectNameInfoEXT::default()
             .object_handle(object)
             .object_name(&object_name);
@@ -133,12 +140,6 @@ impl Device {
                 .set_debug_utils_object_name(&name_info)
                 .expect("Failed to set object debug name");
         }
-    }
-
-    pub fn allocator(&self) -> sync::RwLockWriteGuard<'_, gpu_alloc::Allocator> {
-        self.allocator
-            .write()
-            .expect("Failed to get write access to Vulkan allocator")
     }
 }
 

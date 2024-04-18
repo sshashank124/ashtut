@@ -11,7 +11,7 @@ repository.workspace = true
 ash = { version = "0.38", features = ["linked"] }
 bytemuck = { workspace = true }
 glam = { workspace = true }
-gpu-allocator = { git = "https://github.com/Traverse-Research/gpu-allocator.git", branch = "ash-0.38", default-features = false, features = ["vulkan"] }
+vk-mem = { git = "https://github.com/adrien-ben/vk-mem-rs.git", rev = "113c534" }
 image = "0.25"
 raw-window-handle = "*"
 scene = { workspace = true }

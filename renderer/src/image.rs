@@ -1,9 +1,9 @@
 use std::{marker::ConstParamTy, ops::Deref, slice};
 
 use ash::vk;
-use gpu_allocator::vulkan as gpu_alloc;
+use vk_mem::Alloc;
 
-use crate::{buffer::Buffer, context::Context, scope::Scope, Destroy};
+use crate::{buffer::Buffer, context::Context, memory, scope::Scope, Destroy};
 
 #[derive(PartialEq, Eq, ConstParamTy)]
 pub enum Format {
@@ -28,7 +28,7 @@ pub struct Image<const FORMAT: Format> {
     pub image: vk::Image,
     pub view: vk::ImageView,
     pub extent: vk::Extent2D,
-    allocation: Option<gpu_alloc::Allocation>,
+    allocation: Option<vk_mem::Allocation>, // None if memory is not managed by us (eg. swapchain)
 }
 
 pub struct BarrierInfo {
@@ -40,11 +40,11 @@ pub struct BarrierInfo {
 impl<const FORMAT: Format> Image<FORMAT> {
     pub fn new_of_format(
         ctx: &Context,
-        name: impl AsRef<str>,
+        name: String,
         image: vk::Image,
         extent: vk::Extent2D,
         format: vk::Format,
-        allocation: Option<gpu_alloc::Allocation>,
+        allocation: Option<vk_mem::Allocation>,
     ) -> Self {
         let view = {
             let info = vk::ImageViewCreateInfo::default()
@@ -58,7 +58,7 @@ impl<const FORMAT: Format> Image<FORMAT> {
                     .expect("Failed to create image view")
             }
         };
-        ctx.set_debug_name(view, String::from(name.as_ref()) + " - Image View");
+        ctx.set_debug_name(view, &(name + " - Image View"));
 
         Self {
             image,
@@ -70,10 +70,10 @@ impl<const FORMAT: Format> Image<FORMAT> {
 
     pub fn new(
         ctx: &Context,
-        name: impl AsRef<str>,
+        name: String,
         image: vk::Image,
         extent: vk::Extent2D,
-        allocation: Option<gpu_alloc::Allocation>,
+        allocation: Option<vk_mem::Allocation>,
     ) -> Self {
         Self::new_of_format(ctx, name, image, extent, FORMAT.into(), allocation)
     }
@@ -81,11 +81,13 @@ impl<const FORMAT: Format> Image<FORMAT> {
     pub fn create(
         ctx: &Context,
         command_buffer: vk::CommandBuffer,
-        name: impl AsRef<str>,
+        name: String,
         info: &vk::ImageCreateInfo,
+        memory_purpose: &vk_mem::AllocationCreateInfo,
         to: Option<&BarrierInfo>,
     ) -> Self {
-        let name = String::from(name.as_ref()) + " - Image";
+        let name = name + " - Image";
+
         let image_info = vk::ImageCreateInfo {
             image_type: vk::ImageType::TYPE_2D,
             mip_levels: 1,
@@ -98,32 +100,12 @@ impl<const FORMAT: Format> Image<FORMAT> {
             ..*info
         };
 
-        let image = unsafe {
-            ctx.create_image(&image_info, None)
-                .expect("Failed to create image")
+        let (image, allocation) = unsafe {
+            ctx.allocator
+                .create_image(&image_info, memory_purpose)
+                .expect("Failed to create image with allocated memory")
         };
         ctx.set_debug_name(image, &name);
-
-        let requirements = unsafe { ctx.get_image_memory_requirements(image) };
-        let allocation_name = name.clone() + " - Allocation";
-        let allocation_create_info = gpu_alloc::AllocationCreateDesc {
-            name: &allocation_name,
-            requirements,
-            location: gpu_allocator::MemoryLocation::GpuOnly,
-            linear: false,
-            allocation_scheme: gpu_alloc::AllocationScheme::GpuAllocatorManaged,
-        };
-
-        let allocation = ctx
-            .device
-            .allocator()
-            .allocate(&allocation_create_info)
-            .expect("Failed to allocate memory");
-
-        unsafe {
-            ctx.bind_image_memory(image, allocation.memory(), allocation.offset())
-                .expect("Failed to bind memory");
-        }
 
         let image = Self::new(
             ctx,
@@ -202,10 +184,9 @@ impl Image<{ Format::Color }> {
     pub fn create_from_image(
         ctx: &Context,
         scope: &mut Scope,
-        name: impl AsRef<str>,
+        name: String,
         img: &image::RgbaImage,
     ) -> Self {
-        let name = String::from(name.as_ref());
         let staging = {
             let info = vk::BufferCreateInfo::default().usage(vk::BufferUsageFlags::TRANSFER_SRC);
             Buffer::create_with_data(ctx, name.clone() + " - Staging", info, img)
@@ -225,6 +206,7 @@ impl Image<{ Format::Color }> {
             scope.commands.buffer,
             name,
             &info,
+            &memory::purpose::device_local(memory::Priority::Medium),
             Some(&BarrierInfo::TRANSFER_DST),
         );
 
@@ -321,11 +303,8 @@ impl BarrierInfo {
 impl<const FORMAT: Format> Destroy<Context> for Image<FORMAT> {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
         ctx.destroy_image_view(self.view, None);
-        if let Some(allocation) = self.allocation.take() {
-            ctx.destroy_image(self.image, None);
-            ctx.allocator()
-                .free(allocation)
-                .expect("Failed to free allocated memory");
+        if let Some(mut allocation) = self.allocation.take() {
+            ctx.allocator.destroy_image(self.image, &mut allocation);
         }
     }
 }

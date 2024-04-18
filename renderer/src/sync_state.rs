@@ -16,12 +16,12 @@ pub struct SyncState {
 impl SyncState {
     pub fn create(ctx: &Context) -> Self {
         let frame_available =
-            core::array::from_fn(|i| ctx.create_semaphore(format!("image_available#{i}")));
+            core::array::from_fn(|i| ctx.create_semaphore(&format!("image_available#{i}")));
 
         let frame_ready =
-            core::array::from_fn(|i| ctx.create_semaphore(format!("render_finished#{i}")));
+            core::array::from_fn(|i| ctx.create_semaphore(&format!("render_finished#{i}")));
 
-        let in_flight = core::array::from_fn(|i| ctx.create_fence(format!("in_flight#{i}"), true));
+        let in_flight = core::array::from_fn(|i| ctx.create_fence(&format!("in_flight#{i}"), true));
 
         Self {
             frame_available,

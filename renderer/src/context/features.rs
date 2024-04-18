@@ -12,6 +12,7 @@ pub struct Features {
     acceleration_structure: AccelerationStructureFeatures,
     ray_tracing_pipeline: RayTracingPipelineFeatures,
     // Additional
+    memory_priority: MemoryPriorityFeatures,
     pageable_device_local_memory: PageableDeviceLocalMemoryFeatures,
 }
 
@@ -42,6 +43,9 @@ pub struct AccelerationStructureFeatures {
 pub struct RayTracingPipelineFeatures {
     ray_tracing_pipeline: bool,
 }
+pub struct MemoryPriorityFeatures {
+    memory_priority: bool,
+}
 pub struct PageableDeviceLocalMemoryFeatures {
     pageable_device_local_memory: bool,
 }
@@ -50,6 +54,7 @@ impl Features {
     pub fn get_supported(instance: &Instance, physical_device: vk::PhysicalDevice) -> Self {
         let mut pageable_device_local_memory =
             vk::PhysicalDevicePageableDeviceLocalMemoryFeaturesEXT::default();
+        let mut memory_priority = vk::PhysicalDeviceMemoryPriorityFeaturesEXT::default();
 
         let mut ray_tracing_pipeline = vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
         let mut acceleration_structure =
@@ -61,6 +66,7 @@ impl Features {
 
         let mut v_1_0 = vk::PhysicalDeviceFeatures2::default()
             .push_next(&mut pageable_device_local_memory)
+            .push_next(&mut memory_priority)
             .push_next(&mut ray_tracing_pipeline)
             .push_next(&mut acceleration_structure)
             .push_next(&mut v_1_3)
@@ -76,6 +82,7 @@ impl Features {
             v_1_3: V13Features::from(v_1_3),
             acceleration_structure: AccelerationStructureFeatures::from(acceleration_structure),
             ray_tracing_pipeline: RayTracingPipelineFeatures::from(ray_tracing_pipeline),
+            memory_priority: MemoryPriorityFeatures::from(memory_priority),
             pageable_device_local_memory: PageableDeviceLocalMemoryFeatures::from(
                 pageable_device_local_memory,
             ),
@@ -84,7 +91,7 @@ impl Features {
 
     pub fn required<'a>() -> (
         vk::PhysicalDeviceFeatures2<'a>,
-        [Box<dyn vk::ExtendsPhysicalDeviceFeatures2>; 6],
+        [Box<dyn vk::ExtendsPhysicalDeviceFeatures2>; 7],
     ) {
         (
             vk::PhysicalDeviceFeatures2::default().features(V10Features::required()),
@@ -94,6 +101,7 @@ impl Features {
                 Box::new(V13Features::required()),
                 Box::new(AccelerationStructureFeatures::required()),
                 Box::new(RayTracingPipelineFeatures::required()),
+                Box::new(MemoryPriorityFeatures::required()),
                 Box::new(PageableDeviceLocalMemoryFeatures::required()),
             ],
         )
@@ -106,6 +114,7 @@ impl Features {
             && self.v_1_3.supports_requirements()
             && self.acceleration_structure.supports_requirements()
             && self.ray_tracing_pipeline.supports_requirements()
+            && self.memory_priority.supports_requirements()
             && self.pageable_device_local_memory.supports_requirements()
     }
 }
@@ -190,6 +199,16 @@ impl RayTracingPipelineFeatures {
     }
 }
 
+impl MemoryPriorityFeatures {
+    pub const fn supports_requirements(&self) -> bool {
+        self.memory_priority
+    }
+
+    pub fn required<'a>() -> vk::PhysicalDeviceMemoryPriorityFeaturesEXT<'a> {
+        vk::PhysicalDeviceMemoryPriorityFeaturesEXT::default().memory_priority(true)
+    }
+}
+
 impl PageableDeviceLocalMemoryFeatures {
     pub const fn supports_requirements(&self) -> bool {
         self.pageable_device_local_memory
@@ -258,6 +277,14 @@ impl From<vk::PhysicalDeviceRayTracingPipelineFeaturesKHR<'_>> for RayTracingPip
     fn from(f: vk::PhysicalDeviceRayTracingPipelineFeaturesKHR) -> Self {
         Self {
             ray_tracing_pipeline: f.ray_tracing_pipeline > 0,
+        }
+    }
+}
+
+impl From<vk::PhysicalDeviceMemoryPriorityFeaturesEXT<'_>> for MemoryPriorityFeatures {
+    fn from(f: vk::PhysicalDeviceMemoryPriorityFeaturesEXT) -> Self {
+        Self {
+            memory_priority: f.memory_priority > 0,
         }
     }
 }
