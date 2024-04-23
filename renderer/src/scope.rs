@@ -27,6 +27,8 @@ impl Scope {
 
 impl Destroy<Context> for Scope {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.commands.destroy_with(ctx);
         self.resources.destroy_with(ctx);
     }

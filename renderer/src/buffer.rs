@@ -17,6 +17,8 @@ impl Buffer {
         create_info: vk::BufferCreateInfo,
         alloc_info: &vk_mem::AllocationCreateInfo,
     ) -> Self {
+        firestorm::profile_method!(create);
+
         let (buffer, allocation) = unsafe {
             ctx.allocator
                 .create_buffer(&create_info, alloc_info)
@@ -33,6 +35,8 @@ impl Buffer {
         mut info: vk::BufferCreateInfo,
         data: &[u8],
     ) -> Self {
+        firestorm::profile_method!(create_with_data);
+
         info = info.size(std::mem::size_of_val(data) as _);
         let buffer = Self::create(ctx, name, info, &memory::purpose::staging());
         buffer.fill_from(ctx, data);
@@ -47,6 +51,8 @@ impl Buffer {
         data: &[u8],
         memory_priority: memory::Priority,
     ) -> Self {
+        firestorm::profile_method!(create_with_staged_data);
+
         let staging = Self::create_with_data(
             ctx,
             name.clone() + " - Staging",
@@ -77,6 +83,8 @@ impl Buffer {
     }
 
     pub fn fill_from(&self, ctx: &Context, data: &[u8]) {
+        firestorm::profile_method!(fill_from);
+
         let mapped_ptr = ctx
             .allocator
             .get_allocation_info(&self.allocation)
@@ -87,13 +95,15 @@ impl Buffer {
         }
     }
 
-    pub fn cmd_copy_from(
+    fn cmd_copy_from(
         &self,
         ctx: &Context,
         command_buffer: vk::CommandBuffer,
         src: &Self,
         size: u64,
     ) {
+        firestorm::profile_method!(cmd_copy_from);
+
         let copy_info = vk::BufferCopy::default().size(size);
 
         unsafe {
@@ -102,6 +112,8 @@ impl Buffer {
     }
 
     pub fn get_device_address(&self, ctx: &Context) -> vk::DeviceAddress {
+        firestorm::profile_method!(get_device_address);
+
         unsafe {
             ctx.get_buffer_device_address(
                 &vk::BufferDeviceAddressInfo::default().buffer(self.buffer),
@@ -112,6 +124,8 @@ impl Buffer {
 
 impl Destroy<Context> for Buffer {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         ctx.allocator
             .destroy_buffer(self.buffer, &mut self.allocation);
     }

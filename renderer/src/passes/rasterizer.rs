@@ -21,6 +21,8 @@ pub struct Pipeline {
 
 impl Pipeline {
     pub fn create<const FORMAT: image::Format>(ctx: &Context, data: &super::Data<FORMAT>) -> Self {
+        firestorm::profile_method!(create);
+
         let commands = Commands::begin_on_queue(
             ctx,
             format!("{} - Initialization", conf::NAME),
@@ -63,6 +65,8 @@ impl Pipeline {
         ctx: &Context,
         data: &super::Data<FORMAT>,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
+        firestorm::profile_method!(create_pipeline);
+
         let push_constant_ranges = vk::PushConstantRange {
             stage_flags: vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
             offset: 0,
@@ -208,6 +212,8 @@ impl Pipeline {
         data: &super::Data<FORMAT>,
         sync_info: &SyncInfo,
     ) {
+        firestorm::profile_method!(run);
+
         let commands = self.pipeline.begin_pipeline(ctx, 0);
 
         let color_attachments = [vk::RenderingAttachmentInfo::default()
@@ -301,6 +307,8 @@ impl Pipeline {
 
 impl Destroy<Context> for Pipeline {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.depth.destroy_with(ctx);
         self.pipeline.destroy_with(ctx);
     }

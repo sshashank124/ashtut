@@ -30,6 +30,8 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
         resolution: (u32, u32),
         camera: inputs::Camera,
     ) -> Self {
+        firestorm::profile_method!(create);
+
         let descriptors = Self::create_descriptors(ctx);
         let uniforms = Uniforms::create(ctx, camera);
         let scene = Scene::create(ctx, scene);
@@ -73,6 +75,8 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
     }
 
     pub fn create_descriptors(ctx: &Context) -> Descriptors {
+        firestorm::profile_method!(create_descriptors);
+
         let layout = {
             let bindings = [
                 vk::DescriptorSetLayoutBinding::default()
@@ -172,6 +176,8 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
     }
 
     fn bind_to_descriptor_sets(&self, ctx: &Context) {
+        firestorm::profile_method!(bind_to_descriptor_sets);
+
         let uniforms_info = self.uniforms.buffer_info();
 
         let scene_desc_info = vk::DescriptorBufferInfo::default()
@@ -231,13 +237,13 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
                 ctx.update_descriptor_sets(&writes, &[]);
             }
         }
-
-        println!("Potato");
     }
 }
 
 impl<const FORMAT: image::Format> Destroy<Context> for Data<FORMAT> {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.target.destroy_with(ctx);
         self.scene.destroy_with(ctx);
         self.uniforms.destroy_with(ctx);

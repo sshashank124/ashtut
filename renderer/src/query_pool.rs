@@ -11,6 +11,8 @@ pub struct QueryPool {
 
 impl QueryPool {
     pub fn create(ctx: &Context, name: String, q_type: vk::QueryType, count: u32) -> Self {
+        firestorm::profile_method!(create);
+
         let info = vk::QueryPoolCreateInfo::default()
             .query_type(q_type)
             .query_count(count);
@@ -25,6 +27,8 @@ impl QueryPool {
     }
 
     pub fn read<T: Clone + Default>(&self, ctx: &Context) -> Vec<T> {
+        firestorm::profile_method!(read);
+
         let mut results = vec![T::default(); self.count as _];
         unsafe {
             ctx.get_query_pool_results(
@@ -39,12 +43,16 @@ impl QueryPool {
     }
 
     pub fn reset(&self, ctx: &Context, command_buffer: vk::CommandBuffer) {
+        firestorm::profile_method!(reset);
+
         unsafe { ctx.cmd_reset_query_pool(command_buffer, self.pool, 0, self.count) };
     }
 }
 
 impl Destroy<Context> for QueryPool {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         ctx.destroy_query_pool(self.pool, None);
     }
 }

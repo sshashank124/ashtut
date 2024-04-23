@@ -23,6 +23,8 @@ impl<const NUM_SETS: usize> Pipeline<{ NUM_SETS }> {
         queue: &Queue,
         count: usize,
     ) -> Self {
+        firestorm::profile_method!(new);
+
         let descriptor_sets = descriptor_sets.into_iter().collect::<Vec<_>>();
 
         let name = name + " - Pipeline";
@@ -51,6 +53,8 @@ impl<const NUM_SETS: usize> Pipeline<{ NUM_SETS }> {
     }
 
     pub fn submit_pipeline(&self, ctx: &Context, idx: usize, sync_info: &SyncInfo) {
+        firestorm::profile_method!(submit_pipeline);
+
         let mut submit_info = vk::SubmitInfo::default();
         if !sync_info.wait_on.is_empty() {
             submit_info = submit_info
@@ -67,6 +71,8 @@ impl<const NUM_SETS: usize> Pipeline<{ NUM_SETS }> {
 
 impl<const NUM_SETS: usize> Destroy<Context> for Pipeline<{ NUM_SETS }> {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.commands.destroy_with(ctx);
         ctx.destroy_pipeline(self.pipeline, None);
         ctx.destroy_pipeline_layout(self.layout, None);

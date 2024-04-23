@@ -17,6 +17,7 @@ repository = "https://github.com/sshashank124/tsunami"
 
 [workspace.dependencies]
 bytemuck = { version = "1.14", features = ["derive"] }
+firestorm = { version = "0.5" }
 glam = "0.25"
 glsl = { path = "glsl/glsl" }
 renderer = { path = "renderer" }

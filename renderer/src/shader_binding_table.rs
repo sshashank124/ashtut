@@ -22,6 +22,8 @@ impl ShaderBindingTable {
         mut rt_shaders: RayTracingShaders,
         pipeline: vk::Pipeline,
     ) -> Self {
+        firestorm::profile_method!(create);
+
         let (handle_size, handle_alignment, base_alignment) = {
             let props = &ctx.physical_device.properties.ray_tracing_pipeline;
             (
@@ -120,6 +122,8 @@ impl RayTracingShaders {
         misses_files: &[&str],
         closest_hits_files: &[&str],
     ) -> Self {
+        firestorm::profile_method!(new);
+
         let raygen = ctx.create_shader_module_from_file(raygen_file);
         ctx.set_debug_name(raygen, raygen_file);
         let misses = misses_files
@@ -221,12 +225,16 @@ impl RayTracingShaders {
 
 impl Destroy<Context> for ShaderBindingTable {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.buffer.destroy_with(ctx);
     }
 }
 
 impl Destroy<Context> for RayTracingShaders {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         ctx.destroy_shader_module(self.raygen, None);
         self.misses
             .iter()

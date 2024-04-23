@@ -32,6 +32,8 @@ pub struct App {
 
 impl App {
     pub fn new(window: &Window, scene_file: &str) -> Self {
+        firestorm::profile_method!(new);
+
         let scene = scene::io::load(scene_file);
 
         let camera_controller = CameraController::new(
@@ -62,6 +64,8 @@ impl App {
     }
 
     fn render(&mut self) {
+        firestorm::profile_method!(render);
+
         self.update();
 
         if self.needs_resizing {
@@ -78,6 +82,8 @@ impl App {
     }
 
     fn update(&mut self) {
+        firestorm::profile_method!(update);
+
         let now = Instant::now();
         let delta_us = (now - self.last_frame).as_micros();
 
@@ -121,6 +127,8 @@ impl App {
     }
 
     pub fn run(mut self, event_loop: EventLoop<()>) {
+        firestorm::profile_method!(run);
+
         event_loop.set_control_flow(ControlFlow::Poll);
         event_loop
             .run(move |event, elwt| match event {

@@ -7,9 +7,7 @@ use std::{
 use ash::vk;
 use raw_window_handle::HasWindowHandle;
 
-use super::{
-    bytes_to_string, extensions, physical_device::PhysicalDevice, queue, surface,
-};
+use super::{bytes_to_string, extensions, physical_device::PhysicalDevice, queue, surface};
 
 pub struct Instance {
     pub entry: ash::Entry,
@@ -18,6 +16,8 @@ pub struct Instance {
 
 impl Instance {
     pub fn new(app_name: &str) -> Self {
+        firestorm::profile_method!(new);
+
         let entry = ash::Entry::linked();
 
         let app_name = CString::new(app_name).unwrap();
@@ -46,6 +46,8 @@ impl Instance {
         &self,
         surface: &surface::Handle,
     ) -> (PhysicalDevice, queue::Families, surface::Config) {
+        firestorm::profile_method!(get_physical_device_and_info);
+
         let all_devices = unsafe {
             self.enumerate_physical_devices()
                 .expect("Failed to enumerate physical devices")
@@ -87,6 +89,8 @@ impl Instance {
     }
 
     fn has_required_device_extensions(&self, physical_device: vk::PhysicalDevice) -> bool {
+        firestorm::profile_method!(has_required_device_extensions);
+
         let available_extensions: HashSet<_> = unsafe {
             self.enumerate_device_extension_properties(physical_device)
                 .expect("Failed to get device extension properties")
@@ -105,6 +109,8 @@ impl Instance {
 
 impl Drop for Instance {
     fn drop(&mut self) {
+        firestorm::profile_method!(drop);
+
         unsafe {
             self.instance.destroy_instance(None);
         }

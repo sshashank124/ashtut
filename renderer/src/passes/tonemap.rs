@@ -26,6 +26,8 @@ pub struct Pipeline<const INPUT_FORMAT: image::Format, const OUTPUT_FORMAT: imag
 
 impl<const FORMAT: image::Format> Data<FORMAT> {
     pub fn create(ctx: &Context, data: &super::Data<FORMAT>) -> Self {
+        firestorm::profile_method!(create);
+
         let descriptors = Self::create_descriptors(ctx);
 
         let input_image = image::Image::new(
@@ -46,6 +48,8 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
     }
 
     fn create_descriptors(ctx: &Context) -> Descriptors {
+        firestorm::profile_method!(create_descriptors);
+
         let layout = {
             let binding = vk::DescriptorSetLayoutBinding::default()
                 .binding(0)
@@ -89,6 +93,8 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
     }
 
     fn bind_to_descriptor_sets(&self, ctx: &Context) {
+        firestorm::profile_method!(bind_to_descriptor_sets);
+
         for &set in &self.descriptors.sets {
             let rendered_image_info = vk::DescriptorImageInfo::default()
                 .image_layout(vk::ImageLayout::GENERAL)
@@ -112,6 +118,8 @@ impl<const INPUT_FORMAT: image::Format, const OUTPUT_FORMAT: image::Format>
     Pipeline<INPUT_FORMAT, OUTPUT_FORMAT>
 {
     pub fn create(ctx: &Context, data: &super::Data<INPUT_FORMAT>) -> Self {
+        firestorm::profile_method!(create);
+
         let data = Data::create(ctx, data);
 
         let (layout, pipeline) = Self::create_pipeline(ctx, data.descriptors.layout);
@@ -135,6 +143,8 @@ impl<const INPUT_FORMAT: image::Format, const OUTPUT_FORMAT: image::Format>
         ctx: &Context,
         descriptor_set_layout: vk::DescriptorSetLayout,
     ) -> (vk::PipelineLayout, vk::Pipeline) {
+        firestorm::profile_method!(create_pipeline);
+
         let shader_module_vert = ctx.create_shader_module_from_file(conf::SHADER_VERT);
         let shader_module_frag = ctx.create_shader_module_from_file(conf::SHADER_FRAG);
         let shader_stages = [
@@ -239,6 +249,8 @@ impl<const INPUT_FORMAT: image::Format, const OUTPUT_FORMAT: image::Format>
         sync_info: &SyncInfo,
         output_to: &image::Image<{ OUTPUT_FORMAT }>,
     ) {
+        firestorm::profile_method!(run);
+
         let commands = self.pipeline.begin_pipeline(ctx, idx);
 
         let color_attachments = [vk::RenderingAttachmentInfo::default()
@@ -310,6 +322,8 @@ impl<const INPUT_FORMAT: image::Format, const OUTPUT_FORMAT: image::Format> Dest
     for Pipeline<INPUT_FORMAT, OUTPUT_FORMAT>
 {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.pipeline.destroy_with(ctx);
         self.data.destroy_with(ctx);
     }
@@ -317,6 +331,8 @@ impl<const INPUT_FORMAT: image::Format, const OUTPUT_FORMAT: image::Format> Dest
 
 impl<const FORMAT: image::Format> Destroy<Context> for Data<FORMAT> {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.input_image.destroy_with(ctx);
         self.sampler.destroy_with(ctx);
         self.descriptors.destroy_with(ctx);

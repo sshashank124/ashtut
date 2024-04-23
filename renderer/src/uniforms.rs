@@ -12,6 +12,8 @@ pub struct Uniforms {
 
 impl Uniforms {
     pub fn create(ctx: &Context, camera: inputs::Camera) -> Self {
+        firestorm::profile_method!(create);
+
         let data = inputs::Uniforms { camera };
 
         let buffer_info = vk::BufferCreateInfo::default()
@@ -33,6 +35,8 @@ impl Uniforms {
     }
 
     pub fn update(&mut self, ctx: &Context) {
+        firestorm::profile_method!(update);
+
         if self.dirty {
             self.buffer.fill_with(ctx, &self.data);
             self.dirty = false;
@@ -53,6 +57,8 @@ impl Uniforms {
 
 impl Destroy<Context> for Uniforms {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.buffer.destroy_with(ctx);
     }
 }

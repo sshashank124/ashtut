@@ -22,6 +22,8 @@ pub struct RayTracingPipelineProperties {
 
 impl Properties {
     pub fn get_supported(instance: &Instance, physical_device: vk::PhysicalDevice) -> Self {
+        firestorm::profile_method!(get_supported);
+
         let mut ray_tracing_pipeline = vk::PhysicalDeviceRayTracingPipelinePropertiesKHR::default();
         let mut acceleration_structure =
             vk::PhysicalDeviceAccelerationStructurePropertiesKHR::default();

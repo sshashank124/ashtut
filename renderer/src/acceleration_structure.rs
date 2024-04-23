@@ -43,6 +43,8 @@ unsafe impl bytemuck::Pod for Instance {}
 
 impl AccelerationStructures {
     pub fn build(ctx: &Context, scene_info: &world::SceneInfo) -> Self {
+        firestorm::profile_method!(build);
+
         let mut scope = Scope::new(Commands::begin_on_queue(
             ctx,
             "Acceleration Structures - Initialization".to_owned(),
@@ -63,6 +65,8 @@ impl AccelerationStructures {
         instances: &[scene::Instance],
         blases: &[AccelerationStructure],
     ) -> AccelerationStructure {
+        firestorm::profile_method!(build_tlas);
+
         let instances_info =
             InstancesInfo::for_instances(ctx, scope.commands.buffer, instances, blases);
         let geometry_info = GeometryInfo::for_instances(ctx, &instances_info);
@@ -77,6 +81,8 @@ impl AccelerationStructures {
         scope: &mut Scope,
         scene_info: &world::SceneInfo,
     ) -> Vec<AccelerationStructure> {
+        firestorm::profile_method!(build_blases);
+
         let geometry_infos = GeometryInfo::for_primitives(scene_info);
         let mut build_infos = BuildInfo::for_geometries(ctx, true, &geometry_infos);
 
@@ -173,6 +179,8 @@ impl AccelerationStructures {
 
 impl AccelerationStructure {
     fn init(ctx: &Context, name: String, build_info: &BuildInfo) -> Self {
+        firestorm::profile_method!(init);
+
         let object_name = name + " - Acceleration Structure";
 
         let buffer = Buffer::create(
@@ -223,6 +231,8 @@ impl AccelerationStructure {
         build_info: &mut BuildInfo,
         scratch_address: Option<vk::DeviceAddress>,
     ) -> Self {
+        firestorm::profile_method!(build);
+
         build_info.geometry.scratch_data.device_address = scratch_address.unwrap_or_else(|| {
             Self::create_scratch(
                 ctx,
@@ -252,6 +262,8 @@ impl AccelerationStructure {
         name: String,
         size: vk::DeviceSize,
     ) -> vk::DeviceAddress {
+        firestorm::profile_method!(create_scratch);
+
         let min_alignment = ctx
             .physical_device
             .properties
@@ -411,6 +423,8 @@ impl InstancesInfo {
         instances: &[scene::Instance],
         blases: &[AccelerationStructure],
     ) -> Self {
+        firestorm::profile_method!(for_instances);
+
         let instances = Instance::for_instances(instances, blases);
 
         let buffer = Buffer::create_with_data(
@@ -479,6 +493,8 @@ impl Instance {
 
 impl Destroy<Context> for AccelerationStructures {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.tlas.destroy_with(ctx);
         self.blases.destroy_with(ctx);
     }
@@ -486,6 +502,8 @@ impl Destroy<Context> for AccelerationStructures {
 
 impl Destroy<Context> for AccelerationStructure {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         ctx.ext
             .accel
             .destroy_acceleration_structure(self.accel, None);
@@ -495,6 +513,8 @@ impl Destroy<Context> for AccelerationStructure {
 
 impl Destroy<Context> for InstancesInfo {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.buffer.destroy_with(ctx);
     }
 }

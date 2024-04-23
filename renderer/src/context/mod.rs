@@ -22,6 +22,8 @@ pub struct Context {
 
 impl Context {
     pub fn init(name: &str, window: &impl HasWindowHandle) -> Self {
+        firestorm::profile_method!(init);
+
         let instance = Instance::new(name);
         let surface_handle = instance.create_surface_on(window);
 

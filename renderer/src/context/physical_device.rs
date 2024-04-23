@@ -12,6 +12,8 @@ pub struct PhysicalDevice {
 
 impl PhysicalDevice {
     pub fn new(instance: &Instance, physical_device: vk::PhysicalDevice) -> Self {
+        firestorm::profile_method!(new);
+
         let properties = Properties::get_supported(instance, physical_device);
         let features = Features::get_supported(instance, physical_device);
 

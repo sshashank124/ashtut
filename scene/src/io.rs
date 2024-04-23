@@ -23,6 +23,8 @@ pub trait FileLoader {
 const FILE_EXTENSION: &str = "tsnasset";
 
 pub fn load(file: impl AsRef<Path>) -> Scene {
+    firestorm::profile_fn!(scene_load);
+
     let filepath = file.as_ref();
     assert!(
         filepath.extension().unwrap_or_default() == FILE_EXTENSION,

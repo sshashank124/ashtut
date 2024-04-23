@@ -52,6 +52,8 @@ pub struct PageableDeviceLocalMemoryFeatures {
 
 impl Features {
     pub fn get_supported(instance: &Instance, physical_device: vk::PhysicalDevice) -> Self {
+        firestorm::profile_method!(get_supported);
+
         let mut pageable_device_local_memory =
             vk::PhysicalDevicePageableDeviceLocalMemoryFeaturesEXT::default();
         let mut memory_priority = vk::PhysicalDeviceMemoryPriorityFeaturesEXT::default();

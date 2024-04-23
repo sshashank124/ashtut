@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+firestorm = { workspace = true }
 flate2 = "1"
 glam = { workspace = true }
 gltf = "1"

@@ -32,6 +32,8 @@ pub struct Handles {
 
 impl Handles {
     pub fn create(instance: &Instance, device: &ash::Device) -> Self {
+        firestorm::profile_method!(create_shader_module_from_file);
+
         let debug_utils = ext::debug_utils::Device::new(instance, device);
         let swapchain = khr::swapchain::Device::new(instance, device);
         let accel = khr::acceleration_structure::Device::new(instance, device);

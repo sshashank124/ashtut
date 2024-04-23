@@ -32,6 +32,8 @@ pub struct SceneInfo {
 
 impl Scene {
     pub fn create(ctx: &Context, scene: scene::Scene) -> Self {
+        firestorm::profile_method!(create);
+
         let mut scope = Scope::new(Commands::begin_on_queue(
             ctx,
             "Scene - Initialization".to_owned(),
@@ -88,6 +90,8 @@ impl Scene {
         scope: &mut Scope,
         scene: &scene::Data,
     ) -> (Buffer, Buffer) {
+        firestorm::profile_method!(init_vertex_index_buffer);
+
         let vertices = {
             let create_info = vk::BufferCreateInfo::default().usage(
                 vk::BufferUsageFlags::VERTEX_BUFFER
@@ -128,6 +132,8 @@ impl Scene {
     }
 
     fn init_primitives_buffer(ctx: &Context, scope: &mut Scope, scene: &scene::Info) -> Buffer {
+        firestorm::profile_method!(init_primitives_buffer);
+
         let create_info = vk::BufferCreateInfo::default().usage(
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
         );
@@ -143,6 +149,8 @@ impl Scene {
     }
 
     fn init_materials_buffer(ctx: &Context, scope: &mut Scope, scene: &scene::Data) -> Buffer {
+        firestorm::profile_method!(init_materials_buffer);
+
         let create_info = vk::BufferCreateInfo::default().usage(
             vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
         );
@@ -162,6 +170,8 @@ impl Scene {
         scope: &mut Scope,
         scene_desc: &scene::SceneDesc,
     ) -> Buffer {
+        firestorm::profile_method!(init_scene_desc_buffer);
+
         let create_info =
             vk::BufferCreateInfo::default().usage(vk::BufferUsageFlags::UNIFORM_BUFFER);
 
@@ -184,6 +194,8 @@ impl Scene {
         Vec<Image<{ Format::Color }>>,
         Vec<Texture<{ Format::Color }>>,
     ) {
+        firestorm::profile_method!(init_textures);
+
         let images = if scene_data.images.is_empty() {
             vec![Image::create_from_image(
                 ctx,
@@ -232,6 +244,8 @@ impl Scene {
 
 impl Destroy<Context> for Scene {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.accel.destroy_with(ctx);
         self.textures.destroy_with(ctx);
         self.images.destroy_with(ctx);

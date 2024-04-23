@@ -10,6 +10,8 @@ pub struct Sampler {
 
 impl Sampler {
     pub fn create(ctx: &Context, name: String) -> Self {
+        firestorm::profile_method!(create);
+
         let info = vk::SamplerCreateInfo::default()
             .mag_filter(vk::Filter::LINEAR)
             .min_filter(vk::Filter::LINEAR)
@@ -41,6 +43,8 @@ impl Sampler {
 
 impl Destroy<Context> for Sampler {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         ctx.destroy_sampler(self.sampler, None);
     }
 }

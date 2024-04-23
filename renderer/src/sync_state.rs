@@ -15,6 +15,8 @@ pub struct SyncState {
 
 impl SyncState {
     pub fn create(ctx: &Context) -> Self {
+        firestorm::profile_method!(create);
+
         let frame_available =
             core::array::from_fn(|i| ctx.create_semaphore(&format!("image_available#{i}")));
 
@@ -50,6 +52,8 @@ impl SyncState {
 
 impl Destroy<Context> for SyncState {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         for i in 0..conf::MAX_FRAMES_IN_FLIGHT {
             ctx.destroy_semaphore(self.frame_available[i], None);
             ctx.destroy_semaphore(self.frame_ready[i], None);

@@ -69,6 +69,8 @@ impl Renderer {
         resolution: (u32, u32),
         camera: inputs::Camera,
     ) -> Self {
+        firestorm::profile_method!(create);
+
         let ctx = Context::init(name, window);
 
         let data = passes::Data::create(&ctx, scene, resolution, camera);
@@ -98,6 +100,8 @@ impl Renderer {
     }
 
     pub fn render(&mut self) -> Result<(), Error> {
+        firestorm::profile_method!(render);
+
         unsafe {
             self.ctx
                 .wait_for_fences(
@@ -172,6 +176,8 @@ impl Renderer {
     }
 
     pub fn recreate(&mut self) -> bool {
+        firestorm::profile_method!(recreate);
+
         unsafe {
             self.ctx.wait_idle();
         }
@@ -191,6 +197,8 @@ impl Renderer {
 
 impl Drop for Renderer {
     fn drop(&mut self) {
+        firestorm::profile_method!(drop);
+
         unsafe {
             self.ctx.wait_idle();
 

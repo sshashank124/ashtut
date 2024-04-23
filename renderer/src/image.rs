@@ -46,6 +46,8 @@ impl<const FORMAT: Format> Image<FORMAT> {
         format: vk::Format,
         allocation: Option<vk_mem::Allocation>,
     ) -> Self {
+        firestorm::profile_method!(new_of_format);
+
         let view = {
             let info = vk::ImageViewCreateInfo::default()
                 .image(image)
@@ -86,6 +88,8 @@ impl<const FORMAT: Format> Image<FORMAT> {
         memory_purpose: &vk_mem::AllocationCreateInfo,
         to: Option<&BarrierInfo>,
     ) -> Self {
+        firestorm::profile_method!(create);
+
         let name = name + " - Image";
 
         let image_info = vk::ImageCreateInfo {
@@ -142,6 +146,8 @@ impl<const FORMAT: Format> Image<FORMAT> {
         from: &BarrierInfo,
         to: &BarrierInfo,
     ) {
+        firestorm::profile_method!(transition_layout);
+
         let barrier = vk::ImageMemoryBarrier::default()
             .image(self.image)
             .old_layout(from.layout)
@@ -187,6 +193,8 @@ impl Image<{ Format::Color }> {
         name: String,
         img: &image::RgbaImage,
     ) -> Self {
+        firestorm::profile_method!(create_from_image);
+
         let staging = {
             let info = vk::BufferCreateInfo::default().usage(vk::BufferUsageFlags::TRANSFER_SRC);
             Buffer::create_with_data(ctx, name.clone() + " - Staging", info, img)
@@ -232,6 +240,8 @@ impl Image<{ Format::Color }> {
         src: &Buffer,
         extent: vk::Extent3D,
     ) {
+        firestorm::profile_method!(cmd_copy_from);
+
         let copy_info = vk::BufferImageCopy::default()
             .image_extent(extent)
             .image_subresource(vk::ImageSubresourceLayers {
@@ -302,6 +312,8 @@ impl BarrierInfo {
 
 impl<const FORMAT: Format> Destroy<Context> for Image<FORMAT> {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         ctx.destroy_image_view(self.view, None);
         if let Some(mut allocation) = self.allocation.take() {
             ctx.allocator.destroy_image(self.image, &mut allocation);

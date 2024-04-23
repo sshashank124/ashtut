@@ -11,6 +11,8 @@ pub struct Swapchain {
 
 impl Swapchain {
     pub fn create(ctx: &Context) -> Self {
+        firestorm::profile_method!(create);
+
         let create_info = vk::SwapchainCreateInfoKHR::default()
             .surface(**ctx.surface)
             .min_image_count(ctx.surface.config.image_count)
@@ -56,6 +58,8 @@ impl Swapchain {
     }
 
     pub fn get_next_image(&self, ctx: &Context, signal_to: vk::Semaphore) -> (u32, bool) {
+        firestorm::profile_method!(get_next_image);
+
         unsafe {
             ctx.ext
                 .swapchain
@@ -71,6 +75,8 @@ impl Swapchain {
         image_index: usize,
         wait_on: &[vk::Semaphore],
     ) -> bool {
+        firestorm::profile_method!(present_to_when);
+
         let image_index = image_index as _;
         let present_info = vk::PresentInfoKHR::default()
             .wait_semaphores(wait_on)
@@ -88,6 +94,8 @@ impl Swapchain {
 
 impl Destroy<Context> for Swapchain {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         self.images.destroy_with(ctx);
         ctx.ext.swapchain.destroy_swapchain(self.swapchain, None);
     }

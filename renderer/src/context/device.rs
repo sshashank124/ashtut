@@ -27,6 +27,8 @@ impl Device {
         physical_device: &PhysicalDevice,
         families: &Families,
     ) -> Self {
+        firestorm::profile_method!(create);
+
         let device = {
             let (required_features, mut additional_required_features) = Features::required();
             let mut required_features = additional_required_features
@@ -78,6 +80,8 @@ impl Device {
     }
 
     pub fn create_semaphore(&self, name: &str) -> vk::Semaphore {
+        firestorm::profile_method!(create_semaphore);
+
         let semaphore = {
             let create_info = vk::SemaphoreCreateInfo::default();
 
@@ -93,6 +97,8 @@ impl Device {
     }
 
     pub fn create_fence(&self, name: &str, signaled: bool) -> vk::Fence {
+        firestorm::profile_method!(create_fence);
+
         let fence = {
             let create_info = vk::FenceCreateInfo::default().flags(if signaled {
                 vk::FenceCreateFlags::SIGNALED
@@ -112,6 +118,8 @@ impl Device {
     }
 
     pub fn create_shader_module_from_file(&self, filepath: &str) -> vk::ShaderModule {
+        firestorm::profile_method!(create_shader_module_from_file);
+
         let shader_code = {
             let mut file = File::open(filepath).expect("Unable to open shader file");
             ash::util::read_spv(&mut file).expect("Unable to parse shader file")
@@ -124,6 +132,8 @@ impl Device {
     }
 
     pub unsafe fn wait_idle(&self) {
+        firestorm::profile_method!(wait_idle);
+
         self.device_wait_idle()
             .expect("Failed to wait for device to idle");
     }
@@ -145,6 +155,8 @@ impl Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
+        firestorm::profile_method!(drop);
+
         unsafe {
             ManuallyDrop::drop(&mut self.allocator);
             self.device.destroy_device(None);

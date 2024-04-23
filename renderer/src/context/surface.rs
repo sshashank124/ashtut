@@ -53,12 +53,16 @@ impl Surface {
 
 impl Handle {
     pub fn new(instance: &Instance, window: &impl HasWindowHandle) -> Self {
+        firestorm::profile_method!(new);
+
         let surface = create_surface(instance, window);
         let loader = khr::surface::Instance::new(&instance.entry, instance);
         Self { surface, loader }
     }
 
     pub fn get_config_options_for(&self, physical_device: &PhysicalDevice) -> ConfigurationOptions {
+        firestorm::profile_method!(get_config_options_for);
+
         let capabilities = self.get_capabilities(physical_device);
         let surface_formats = unsafe {
             self.loader
@@ -79,6 +83,8 @@ impl Handle {
     }
 
     pub fn get_capabilities(&self, physical_device: &PhysicalDevice) -> vk::SurfaceCapabilitiesKHR {
+        firestorm::profile_method!(get_capabilities);
+
         unsafe {
             self.loader
                 .get_physical_device_surface_capabilities(**physical_device, self.surface)
@@ -91,6 +97,8 @@ impl Handle {
         physical_device: &PhysicalDevice,
         queue_family_index: u32,
     ) -> bool {
+        firestorm::profile_method!(is_supported_by);
+
         unsafe {
             self.loader
                 .get_physical_device_surface_support(
@@ -190,6 +198,8 @@ impl DerefMut for Surface {
 
 impl Drop for Handle {
     fn drop(&mut self) {
+        firestorm::profile_method!(drop);
+
         unsafe {
             self.loader.destroy_surface(self.surface, None);
         }
@@ -210,6 +220,8 @@ impl DerefMut for Handle {
 }
 
 fn create_surface(instance: &Instance, window: &impl HasWindowHandle) -> vk::SurfaceKHR {
+    firestorm::profile_fn!(create_surface);
+
     let raw_window_handle = window
         .window_handle()
         .expect("Unable to get window handle")

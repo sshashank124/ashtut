@@ -21,6 +21,8 @@ impl Commands {
     }
 
     pub fn create_on_queue(ctx: &Context, name: String, queue: &Queue) -> Self {
+        firestorm::profile_method!(create_on_queue);
+
         let pool = {
             let info = vk::CommandPoolCreateInfo::default().queue_family_index(queue.family_index);
             unsafe {
@@ -48,6 +50,8 @@ impl Commands {
     }
 
     fn begin_recording(&self, ctx: &Context) {
+        firestorm::profile_method!(begin_recording);
+
         let begin_info = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
@@ -58,6 +62,8 @@ impl Commands {
     }
 
     fn finish_recording(&self, ctx: &Context) {
+        firestorm::profile_method!(finish_recording);
+
         unsafe {
             ctx.end_command_buffer(self.buffer)
                 .expect("Failed to end recording commands");
@@ -65,6 +71,8 @@ impl Commands {
     }
 
     pub fn submit(&self, ctx: &Context, submit_info: &vk::SubmitInfo, fence: Option<vk::Fence>) {
+        firestorm::profile_method!(submit);
+
         let submit_info = vk::SubmitInfo {
             command_buffer_count: 1,
             p_command_buffers: slice::from_ref(&self.buffer).as_ptr(),
@@ -94,6 +102,8 @@ impl Commands {
     }
 
     pub fn reset(&self, ctx: &Context) {
+        firestorm::profile_method!(reset);
+
         unsafe {
             ctx.reset_command_pool(self.pool, vk::CommandPoolResetFlags::empty())
                 .expect("Failed to reset command pool");
@@ -114,6 +124,8 @@ impl Commands {
 
 impl Destroy<Context> for Commands {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
+        firestorm::profile_method!(destroy_with);
+
         ctx.destroy_command_pool(self.pool, None);
     }
 }
