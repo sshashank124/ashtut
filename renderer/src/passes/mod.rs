@@ -9,7 +9,7 @@ use shared::inputs;
 
 use crate::{
     commands::Commands, context::Context, descriptors::Descriptors, image, memory,
-    uniforms::Uniforms, world::Scene, Destroy,
+    uniforms::Uniforms, world::World, Destroy,
 };
 
 mod conf {
@@ -19,7 +19,7 @@ mod conf {
 pub struct Data<const FORMAT: image::Format> {
     pub descriptors: Descriptors,
     pub uniforms: Uniforms,
-    pub scene: Scene,
+    pub world: World,
     pub target: image::Image<FORMAT>,
 }
 
@@ -34,7 +34,7 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
 
         let descriptors = Self::create_descriptors(ctx);
         let uniforms = Uniforms::create(ctx, camera);
-        let scene = Scene::create(ctx, scene);
+        let world = World::create(ctx, scene);
 
         let commands = Commands::begin_on_queue(
             ctx,
@@ -67,7 +67,7 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
         let data = Self {
             descriptors,
             uniforms,
-            scene,
+            world,
             target,
         };
         data.bind_to_descriptor_sets(ctx);
@@ -181,18 +181,18 @@ impl<const FORMAT: image::Format> Data<FORMAT> {
         let uniforms_info = self.uniforms.buffer_info();
 
         let scene_desc_info = vk::DescriptorBufferInfo::default()
-            .buffer(*self.scene.scene_desc)
+            .buffer(*self.world.scene_desc)
             .range(vk::WHOLE_SIZE);
 
         let mut accel_info = vk::WriteDescriptorSetAccelerationStructureKHR::default()
-            .acceleration_structures(slice::from_ref(&self.scene.accel.tlas));
+            .acceleration_structures(slice::from_ref(&self.world.accel.tlas));
 
         let target_info = vk::DescriptorImageInfo::default()
             .image_layout(vk::ImageLayout::GENERAL)
             .image_view(self.target.view);
 
         let textures_info: Vec<_> = self
-            .scene
+            .world
             .textures
             .iter()
             .map(|tex| {
@@ -245,7 +245,7 @@ impl<const FORMAT: image::Format> Destroy<Context> for Data<FORMAT> {
         firestorm::profile_method!(destroy_with);
 
         self.target.destroy_with(ctx);
-        self.scene.destroy_with(ctx);
+        self.world.destroy_with(ctx);
         self.uniforms.destroy_with(ctx);
         self.descriptors.destroy_with(ctx);
     }

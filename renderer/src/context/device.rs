@@ -7,8 +7,7 @@ use std::{
 use ash::vk;
 
 use super::{
-    extensions,
-    features::Features,
+    extensions, features,
     instance::Instance,
     physical_device::PhysicalDevice,
     queue::{Families, Queues},
@@ -30,7 +29,7 @@ impl Device {
         firestorm::profile_method!(create);
 
         let device = {
-            let (required_features, mut additional_required_features) = Features::required();
+            let (required_features, mut additional_required_features) = features::required();
             let mut required_features = additional_required_features
                 .iter_mut()
                 .fold(required_features, |acc_features, f| {

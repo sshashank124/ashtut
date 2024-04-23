@@ -67,7 +67,7 @@ impl Queues {
 }
 
 impl Queue {
-    pub fn create(device: &ash::Device, family_index: u32, queue_index: u32) -> Self {
+    fn create(device: &ash::Device, family_index: u32, queue_index: u32) -> Self {
         let queue = unsafe { device.get_device_queue(family_index, queue_index) };
 
         Self {
@@ -78,10 +78,6 @@ impl Queue {
 }
 
 impl Families {
-    pub fn unique(&self) -> HashSet<u32> {
-        HashSet::from([self.graphics, self.compute, self.transfer])
-    }
-
     pub fn find(
         instance: &Instance,
         physical_device: &PhysicalDevice,
@@ -124,6 +120,10 @@ impl Families {
         }
 
         Self::try_from(found_indices).ok()
+    }
+
+    fn unique(&self) -> HashSet<u32> {
+        HashSet::from([self.graphics, self.compute, self.transfer])
     }
 }
 

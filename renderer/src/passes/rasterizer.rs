@@ -247,19 +247,19 @@ impl Pipeline {
             ctx.cmd_bind_vertex_buffers(
                 commands.buffer,
                 0,
-                slice::from_ref(&data.scene.vertices),
+                slice::from_ref(&data.world.vertices),
                 &[0],
             );
 
             ctx.cmd_bind_index_buffer(
                 commands.buffer,
-                *data.scene.indices,
+                *data.world.indices,
                 0,
                 vk::IndexType::UINT32,
             );
         }
 
-        let scene_info = &data.scene.info.host;
+        let scene_info = &data.world.info.host;
         for instance in &scene_info.instances {
             let push_constants = inputs::RasterizerConstants {
                 model_transform: instance.transform,

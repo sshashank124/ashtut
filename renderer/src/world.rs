@@ -13,7 +13,7 @@ use super::{
     Destroy,
 };
 
-pub struct Scene {
+pub struct World {
     pub indices: Buffer,
     pub vertices: Buffer,
     primitives: Buffer,
@@ -30,13 +30,13 @@ pub struct SceneInfo {
     pub device: scene::SceneDesc,
 }
 
-impl Scene {
+impl World {
     pub fn create(ctx: &Context, scene: scene::Scene) -> Self {
         firestorm::profile_method!(create);
 
         let mut scope = Scope::new(Commands::begin_on_queue(
             ctx,
-            "Scene - Initialization".to_owned(),
+            "World - Initialization".to_owned(),
             ctx.queues.transfer(),
         ));
 
@@ -56,7 +56,7 @@ impl Scene {
 
         let mut scope = Scope::new(Commands::begin_on_queue(
             ctx,
-            "Scene - Initialization - Textures".to_owned(),
+            "World - Initialization - Textures".to_owned(),
             ctx.queues.graphics(),
         ));
 
@@ -242,7 +242,7 @@ impl Scene {
     }
 }
 
-impl Destroy<Context> for Scene {
+impl Destroy<Context> for World {
     unsafe fn destroy_with(&mut self, ctx: &Context) {
         firestorm::profile_method!(destroy_with);
 

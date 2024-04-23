@@ -2,25 +2,24 @@ use std::ops::{Deref, DerefMut};
 
 use ash::vk;
 
-use super::{features::Features, instance::Instance, properties::Properties};
+use super::{features, instance::Instance, properties::Properties};
 
 pub struct PhysicalDevice {
     physical_device: vk::PhysicalDevice,
     pub properties: Properties,
-    pub features: Features,
 }
 
 impl PhysicalDevice {
-    pub fn new(instance: &Instance, physical_device: vk::PhysicalDevice) -> Self {
+    pub fn new(instance: &Instance, physical_device: vk::PhysicalDevice) -> Option<Self> {
         firestorm::profile_method!(new);
 
-        let properties = Properties::get_supported(instance, physical_device);
-        let features = Features::get_supported(instance, physical_device);
-
-        Self {
-            physical_device,
-            properties,
-            features,
+        if features::supported_by(instance, physical_device) {
+            Some(Self {
+                physical_device,
+                properties: Properties::get_supported(instance, physical_device),
+            })
+        } else {
+            None
         }
     }
 }

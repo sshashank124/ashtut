@@ -61,13 +61,7 @@ impl Instance {
         let (physical_device, queue_families, surface_config_options) = all_devices
             .into_iter()
             .filter(|&physical_device| self.has_required_device_extensions(physical_device))
-            .filter_map(|pd| {
-                let physical_device = PhysicalDevice::new(self, pd);
-                physical_device
-                    .features
-                    .supports_requirements()
-                    .then_some(physical_device)
-            })
+            .filter_map(|physical_device| PhysicalDevice::new(self, physical_device))
             .filter_map(|physical_device| {
                 queue::Families::find(self, &physical_device, surface).map(|queue_families| {
                     let surface_config_options = surface.get_config_options_for(&physical_device);

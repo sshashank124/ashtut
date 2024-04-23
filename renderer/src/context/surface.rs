@@ -22,8 +22,8 @@ pub struct Surface {
 }
 
 pub struct Handle {
-    pub surface: vk::SurfaceKHR,
-    pub loader: khr::surface::Instance,
+    surface: vk::SurfaceKHR,
+    loader: khr::surface::Instance,
 }
 
 pub struct Config {
@@ -82,7 +82,7 @@ impl Handle {
         }
     }
 
-    pub fn get_capabilities(&self, physical_device: &PhysicalDevice) -> vk::SurfaceCapabilitiesKHR {
+    fn get_capabilities(&self, physical_device: &PhysicalDevice) -> vk::SurfaceCapabilitiesKHR {
         firestorm::profile_method!(get_capabilities);
 
         unsafe {
@@ -146,7 +146,7 @@ impl ConfigurationOptions {
             .unwrap_or(conf::FALLBACK_PRESENT_MODE)
     }
 
-    pub fn choose_extent(capabilities: &vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
+    fn choose_extent(capabilities: &vk::SurfaceCapabilitiesKHR) -> vk::Extent2D {
         if capabilities.current_extent.width != u32::MAX {
             return capabilities.current_extent;
         }
@@ -174,11 +174,11 @@ impl ConfigurationOptions {
 }
 
 impl Config {
-    pub fn update_with(&mut self, surface_capabilities: &vk::SurfaceCapabilitiesKHR) {
+    fn update_with(&mut self, surface_capabilities: &vk::SurfaceCapabilitiesKHR) {
         self.extent = ConfigurationOptions::choose_extent(surface_capabilities);
     }
 
-    pub const fn valid_extent(&self) -> bool {
+    const fn valid_extent(&self) -> bool {
         self.extent.width != 0 && self.extent.height != 0
     }
 }
