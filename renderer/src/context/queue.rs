@@ -111,6 +111,7 @@ impl Families {
             } else if !g && c {
                 found_indices.compute = Some(idx);
             } else if g && c && surface.is_supported_by(physical_device, idx) {
+                // TODO: this should not be checking for the compute flag
                 found_indices.graphics = Some(idx);
             }
 

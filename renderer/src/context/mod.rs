@@ -17,6 +17,7 @@ pub struct Context {
     pub device: Device,
     pub surface: Surface,
     pub physical_device: PhysicalDevice,
+    _instance: Instance,
 }
 
 impl Context {
@@ -37,6 +38,7 @@ impl Context {
             device,
             surface,
             physical_device,
+            _instance: instance,
         }
     }
 

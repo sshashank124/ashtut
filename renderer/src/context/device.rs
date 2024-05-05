@@ -55,18 +55,16 @@ impl Device {
         let queues = Queues::create(&device, families);
 
         let allocator = {
-            let create_info =
-                vk_mem::AllocatorCreateInfo::new(instance, &device, **physical_device)
-                    .vulkan_api_version(crate::conf::VK_API_VERSION)
-                    .flags(
-                        vk_mem::AllocatorCreateFlags::KHR_DEDICATED_ALLOCATION
-                            | vk_mem::AllocatorCreateFlags::KHR_BIND_MEMORY2
-                            | vk_mem::AllocatorCreateFlags::BUFFER_DEVICE_ADDRESS
-                            | vk_mem::AllocatorCreateFlags::EXT_MEMORY_PRIORITY,
-                    );
+            let mut create_info =
+                vk_mem::AllocatorCreateInfo::new(instance, &device, **physical_device);
+            create_info.vulkan_api_version = crate::conf::VK_API_VERSION;
+            create_info.flags = vk_mem::AllocatorCreateFlags::KHR_DEDICATED_ALLOCATION
+                | vk_mem::AllocatorCreateFlags::KHR_BIND_MEMORY2
+                | vk_mem::AllocatorCreateFlags::BUFFER_DEVICE_ADDRESS
+                | vk_mem::AllocatorCreateFlags::EXT_MEMORY_PRIORITY;
 
             ManuallyDrop::new(
-                vk_mem::Allocator::new(create_info).expect("Failed to create allocator"),
+                unsafe { vk_mem::Allocator::new(create_info) }.expect("Failed to create allocator"),
             )
         };
 
